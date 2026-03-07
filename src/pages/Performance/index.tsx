@@ -31,18 +31,18 @@ export default function PerformancePage() {
     loading,
     setTimeRange,
     setBenchmarks,
-    fetchAll,
     fetchBenchmark,
   } = usePerformanceStore();
 
   useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
+    // fetchAll is stable from the Zustand store - use getState() to avoid stale closure
+    usePerformanceStore.getState().fetchAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleTimeRangeChange = (range: typeof timeRange, start?: string, end?: string) => {
     setTimeRange(range, start, end);
-    // Trigger re-fetch after state update (next tick)
-    setTimeout(() => usePerformanceStore.getState().fetchAll(), 0);
+    usePerformanceStore.getState().fetchAll();
   };
 
   const handleBenchmarkChange = (symbols: string[]) => {
@@ -72,7 +72,7 @@ export default function PerformancePage() {
           />
           <Button
             icon={<ReloadOutlined />}
-            onClick={fetchAll}
+            onClick={() => usePerformanceStore.getState().fetchAll()}
             loading={loading}
             size="small"
           >

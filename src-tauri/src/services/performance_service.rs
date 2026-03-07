@@ -1,5 +1,9 @@
 use crate::db::Database;
 use chrono::Datelike;
+
+const RISK_FREE_RATE: f64 = 0.045; // 4.5% US 10-year treasury default
+const TRADING_DAYS_PER_YEAR: f64 = 252.0;
+const CACHE_COVERAGE_THRESHOLD: f64 = 0.5; // require 50% of expected days in cache to skip re-fetch
 use crate::models::performance::{
     annualise_return, calculate_twr_from_periods, AttributionItem, BenchmarkDataPoint,
     DrawdownAnalysis, DrawdownPoint, HoldingPerformance, MonthlyReturn, PerformanceSummary,
@@ -214,7 +218,7 @@ pub fn calculate_volatility(daily_returns: &[f64]) -> (f64, f64) {
     let mean = daily_returns.iter().sum::<f64>() / n as f64;
     let variance = daily_returns.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / (n - 1) as f64;
     let daily_vol = variance.sqrt();
-    let annualised_vol = daily_vol * (252.0_f64).sqrt();
+    let annualised_vol = daily_vol * TRADING_DAYS_PER_YEAR.sqrt();
     (daily_vol, annualised_vol)
 }
 
@@ -274,10 +278,8 @@ pub fn get_performance_summary(
     let dd_analysis = calculate_max_drawdown(&return_series);
 
     let daily_returns: Vec<f64> = return_series.iter().map(|r| r.daily_return).collect();
-    let (daily_vol, ann_vol) = calculate_volatility(&daily_returns);
-    let _ = daily_vol; // suppress unused warning
-    let risk_free_rate = 0.045; // 4.5% default
-    let sharpe = calculate_sharpe(annualised, risk_free_rate, ann_vol);
+    let (_daily_vol, ann_vol) = calculate_volatility(&daily_returns);
+    let sharpe = calculate_sharpe(annualised, RISK_FREE_RATE, ann_vol);
 
     Ok(PerformanceSummary {
         start_date: start_date.format("%Y-%m-%d").to_string(),
@@ -374,8 +376,7 @@ pub fn get_risk_metrics(
     let daily_returns: Vec<f64> = return_series.iter().map(|r| r.daily_return).collect();
     let (daily_vol, ann_vol) = calculate_volatility(&daily_returns);
 
-    let risk_free_rate = 0.045;
-    let sharpe = calculate_sharpe(annualised, risk_free_rate, ann_vol);
+    let sharpe = calculate_sharpe(annualised, RISK_FREE_RATE, ann_vol);
 
     let dd_analysis = calculate_max_drawdown(&return_series);
     let max_dd = dd_analysis.max_drawdown.abs() / 100.0;
@@ -385,7 +386,7 @@ pub fn get_risk_metrics(
         daily_volatility: daily_vol * 100.0,
         annualized_volatility: ann_vol * 100.0,
         sharpe_ratio: sharpe,
-        risk_free_rate: risk_free_rate * 100.0,
+        risk_free_rate: RISK_FREE_RATE * 100.0,
         max_drawdown: dd_analysis.max_drawdown,
         calmar_ratio: calmar,
     })
@@ -814,7 +815,7 @@ pub async fn fetch_benchmark_history(
 
     // If we have data covering the range, use it
     let days_needed = (end_date - start_date).num_days();
-    if cached.len() as i64 >= days_needed / 2 {
+    if (cached.len() as f64) >= days_needed as f64 * CACHE_COVERAGE_THRESHOLD {
         return Ok(cached);
     }
 

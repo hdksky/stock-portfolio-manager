@@ -3,6 +3,8 @@ import type { MonthlyReturn } from "../../types";
 
 const { Text } = Typography;
 
+const SATURATION_THRESHOLD = 10; // % at which color is fully saturated
+
 interface Props {
   data: MonthlyReturn[];
 }
@@ -11,7 +13,7 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 
 function cellColor(rate: number): string {
   if (rate === 0) return "transparent";
-  const intensity = Math.min(Math.abs(rate) / 10, 1); // saturate at ±10%
+  const intensity = Math.min(Math.abs(rate) / SATURATION_THRESHOLD, 1);
   if (rate > 0) {
     const g = Math.round(80 + intensity * 100);
     return `rgba(0, ${g}, 0, ${0.15 + intensity * 0.5})`;
