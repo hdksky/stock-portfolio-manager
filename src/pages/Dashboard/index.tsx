@@ -1,60 +1,45 @@
 import { useEffect } from "react";
-import { Card, Row, Col, Statistic, Typography, Divider, Select, Spin, Alert } from "antd";
-import { useAccountStore } from "../../stores/accountStore";
-import { useHoldingStore } from "../../stores/holdingStore";
+import { Typography, Select, Divider, Card, Row, Col, Statistic, Spin, Alert } from "antd";
+import { useDashboardStore } from "../../stores/dashboardStore";
 import { useExchangeRateStore } from "../../stores/exchangeRateStore";
-import { useQuoteStore } from "../../stores/quoteStore";
 import type { Currency } from "../../types";
+import SummaryCards from "./SummaryCards";
+import HoldingsTable from "./HoldingsTable";
+import QuickCharts from "./QuickCharts";
 import dayjs from "dayjs";
 
 const { Title, Text } = Typography;
 
 export default function DashboardPage() {
-  const { accounts, fetchAccounts } = useAccountStore();
-  const { holdings, fetchHoldings } = useHoldingStore();
-  const { rates, loading: ratesLoading, error: ratesError, baseCurrency, fetchRates, setBaseCurrency, convertWithCachedRates } = useExchangeRateStore();
-  const { holdingQuotes, fetchHoldingQuotes } = useQuoteStore();
+  const { summary, holdingDetails, loadingSummary, loadingHoldings, errorSummary, fetchSummary, fetchHoldingDetails } =
+    useDashboardStore();
+  const { rates, loading: ratesLoading, error: ratesError, baseCurrency, fetchRates, setBaseCurrency } =
+    useExchangeRateStore();
 
   useEffect(() => {
-    fetchAccounts();
-    fetchHoldings();
     fetchRates();
-    fetchHoldingQuotes();
-  }, [fetchAccounts, fetchHoldings, fetchRates, fetchHoldingQuotes]);
+    fetchSummary(baseCurrency);
+    fetchHoldingDetails();
+  }, [fetchRates, fetchSummary, fetchHoldingDetails, baseCurrency]);
 
-  const usAccounts = accounts.filter((a) => a.market === "US");
-  const cnAccounts = accounts.filter((a) => a.market === "CN");
-  const hkAccounts = accounts.filter((a) => a.market === "HK");
-
-  // Compute total portfolio values using realtime quotes
-  let totalMarketValue = 0;
-  let totalCost = 0;
-  holdingQuotes.forEach((h) => {
-    const currency = h.currency as Currency;
-    if (h.market_value !== null && h.market_value !== undefined) {
-      totalMarketValue += convertWithCachedRates(h.market_value, currency, baseCurrency);
-    }
-    if (h.total_cost !== null && h.total_cost !== undefined) {
-      totalCost += convertWithCachedRates(h.total_cost, currency, baseCurrency);
-    }
-  });
-  const totalPnl = totalMarketValue - totalCost;
-  const totalPnlPercent = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
-  const hasQuotes = holdingQuotes.some((h) => h.quote !== null);
-
-  const currencySymbol: Record<Currency, string> = { USD: "$", CNY: "¥", HKD: "HK$" };
+  const handleCurrencyChange = (currency: Currency) => {
+    setBaseCurrency(currency);
+    fetchSummary(currency);
+  };
 
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
-        <Title level={2} className="!mb-0">仪表盘</Title>
+        <Title level={2} className="!mb-0">
+          📊 仪表盘
+        </Title>
         <div className="flex items-center gap-2">
           <Text type="secondary">基准货币:</Text>
           <Select
             value={baseCurrency}
-            onChange={setBaseCurrency}
+            onChange={handleCurrencyChange}
             size="small"
-            style={{ width: 100 }}
+            style={{ width: 120 }}
           >
             <Select.Option value="USD">USD 美元</Select.Option>
             <Select.Option value="CNY">CNY 人民币</Select.Option>
@@ -63,56 +48,11 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <Row gutter={[16, 16]}>
-        <Col span={6}>
-          <Card>
-            <Statistic title="总持仓数" value={holdings.length} suffix="只" />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic title="证券账户数" value={accounts.length} suffix="个" />
-          </Card>
-        </Col>
-        {hasQuotes && (
-          <>
-            <Col span={6}>
-              <Card>
-                <Statistic
-                  title={`总市值 (${baseCurrency})`}
-                  value={totalMarketValue.toFixed(2)}
-                  prefix={currencySymbol[baseCurrency]}
-                />
-              </Card>
-            </Col>
-            <Col span={6}>
-              <Card>
-                <Statistic
-                  title={`总盈亏 (${baseCurrency})`}
-                  value={`${totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(2)} (${totalPnlPercent >= 0 ? "+" : ""}${totalPnlPercent.toFixed(2)}%)`}
-                  valueStyle={{ color: totalPnl >= 0 ? "#3f8600" : "#cf1322" }}
-                />
-              </Card>
-            </Col>
-          </>
-        )}
-        {!hasQuotes && (
-          <Col span={12}>
-            <Card>
-              <Statistic
-                title="覆盖市场"
-                value={[
-                  usAccounts.length > 0 ? "🇺🇸 US" : "",
-                  cnAccounts.length > 0 ? "🇨🇳 CN" : "",
-                  hkAccounts.length > 0 ? "🇭🇰 HK" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" / ") || "—"}
-              />
-            </Card>
-          </Col>
-        )}
-      </Row>
+      {/* Summary Cards */}
+      <SummaryCards summary={summary} loading={loadingSummary} error={errorSummary} />
+
+      {/* Quick market distribution chart */}
+      <QuickCharts summary={summary} />
 
       {/* Exchange Rates Card */}
       <Row gutter={[16, 16]} className="mt-4">
@@ -162,49 +102,10 @@ export default function DashboardPage() {
         </Col>
       </Row>
 
-      <Divider />
+      <Divider>持仓概览</Divider>
 
-      <Row gutter={[16, 16]}>
-        <Col span={8}>
-          <Card title="🇺🇸 美股账户" size="small">
-            {usAccounts.length === 0 ? (
-              <p className="text-gray-400">暂无账户</p>
-            ) : (
-              usAccounts.map((a) => (
-                <div key={a.id} className="py-1 border-b last:border-0">
-                  {a.name}
-                </div>
-              ))
-            )}
-          </Card>
-        </Col>
-        <Col span={8}>
-          <Card title="🇨🇳 A股账户" size="small">
-            {cnAccounts.length === 0 ? (
-              <p className="text-gray-400">暂无账户</p>
-            ) : (
-              cnAccounts.map((a) => (
-                <div key={a.id} className="py-1 border-b last:border-0">
-                  {a.name}
-                </div>
-              ))
-            )}
-          </Card>
-        </Col>
-        <Col span={8}>
-          <Card title="🇭🇰 港股账户" size="small">
-            {hkAccounts.length === 0 ? (
-              <p className="text-gray-400">暂无账户</p>
-            ) : (
-              hkAccounts.map((a) => (
-                <div key={a.id} className="py-1 border-b last:border-0">
-                  {a.name}
-                </div>
-              ))
-            )}
-          </Card>
-        </Col>
-      </Row>
+      {/* Holdings Detail Table */}
+      <HoldingsTable holdings={holdingDetails} loading={loadingHoldings} />
     </div>
   );
 }

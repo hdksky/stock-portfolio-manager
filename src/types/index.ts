@@ -98,6 +98,103 @@ export interface DailyPortfolioValue {
   cumulative_pnl: number;
 }
 
+// Phase 3: Dashboard types
+export interface DashboardSummary {
+  total_market_value: number;
+  total_cost: number;
+  total_pnl: number;
+  total_pnl_percent: number;
+  daily_pnl: number;
+  us_market_value: number;
+  cn_market_value: number;
+  hk_market_value: number;
+  exchange_rates: ExchangeRates;
+  base_currency: string;
+}
+
+export interface HoldingDetail {
+  id: string;
+  account_id: string;
+  account_name: string;
+  symbol: string;
+  name: string;
+  market: string;
+  category_name: string;
+  category_color: string;
+  shares: number;
+  avg_cost: number;
+  current_price: number;
+  market_value: number;
+  cost_value: number;
+  pnl: number;
+  pnl_percent: number;
+  currency: Currency;
+}
+
+// Phase 3: Statistics types
+export interface PieSlice {
+  name: string;
+  value: number;
+  color?: string | null;
+}
+
+export interface PnlItem {
+  symbol: string;
+  name: string;
+  pnl: number;
+  pnl_percent: number;
+  market_value: number;
+}
+
+export interface StatisticsOverview {
+  total_market_value: number;
+  total_cost: number;
+  total_pnl: number;
+  total_pnl_percent: number;
+  market_distribution: PieSlice[];
+  category_distribution: PieSlice[];
+  account_distribution: PieSlice[];
+  top_gainers: PnlItem[];
+  top_losers: PnlItem[];
+}
+
+export interface MarketStatistics {
+  market: string;
+  total_market_value: number;
+  total_cost: number;
+  total_pnl: number;
+  total_pnl_percent: number;
+  account_distribution: PieSlice[];
+  category_distribution: PieSlice[];
+  stock_distribution: PieSlice[];
+  holdings: HoldingDetail[];
+}
+
+export interface AccountStatistics {
+  account_id: string;
+  account_name: string;
+  market: string;
+  total_market_value: number;
+  total_cost: number;
+  total_pnl: number;
+  total_pnl_percent: number;
+  category_distribution: PieSlice[];
+  stock_distribution: PieSlice[];
+  holdings: HoldingDetail[];
+}
+
+export interface CategoryStatistics {
+  category_id: string;
+  category_name: string;
+  category_color: string;
+  total_market_value: number;
+  total_cost: number;
+  total_pnl: number;
+  total_pnl_percent: number;
+  market_distribution: PieSlice[];
+  holdings: HoldingDetail[];
+}
+
 export interface CreateAccountPayload {
   name: string;
   market: Market;

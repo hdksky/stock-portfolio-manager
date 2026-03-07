@@ -49,6 +49,12 @@ pub fn run() {
             commands::exchange_rates::convert_amount,
             commands::snapshots::take_snapshot,
             commands::snapshots::get_portfolio_history,
+            commands::dashboard::get_dashboard_summary,
+            commands::dashboard::get_holdings_with_quotes,
+            commands::statistics::get_statistics_overview,
+            commands::statistics::get_statistics_by_market,
+            commands::statistics::get_statistics_by_account,
+            commands::statistics::get_statistics_by_category,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
