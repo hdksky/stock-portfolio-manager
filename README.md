@@ -191,4 +191,4 @@ SQLite database is stored in the system app data directory:
 
 ## License
 
-Private project for personal use.
+It is released under the GPL-3.0 license. Use it at your own risk.
