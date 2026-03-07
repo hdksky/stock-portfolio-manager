@@ -7,12 +7,14 @@ import {
   StockOutlined,
   SwapOutlined,
   TagsOutlined,
+  BarChartOutlined,
 } from "@ant-design/icons";
 
 const { Sider, Content } = Layout;
 
 const menuItems = [
   { key: "/dashboard", icon: <DashboardOutlined />, label: "仪表盘" },
+  { key: "/statistics", icon: <BarChartOutlined />, label: "统计分析" },
   { key: "/accounts", icon: <BankOutlined />, label: "证券账户" },
   { key: "/holdings", icon: <StockOutlined />, label: "持仓管理" },
   { key: "/transactions", icon: <SwapOutlined />, label: "交易记录" },

@@ -5,6 +5,7 @@ import AccountsPage from "./pages/Accounts";
 import HoldingsPage from "./pages/Holdings";
 import TransactionsPage from "./pages/Transactions";
 import CategoriesPage from "./pages/Categories";
+import StatisticsPage from "./pages/Statistics";
 
 function App() {
   return (
@@ -12,6 +13,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/statistics" element={<StatisticsPage />} />
         <Route path="/accounts" element={<AccountsPage />} />
         <Route path="/holdings" element={<HoldingsPage />} />
         <Route path="/transactions" element={<TransactionsPage />} />
