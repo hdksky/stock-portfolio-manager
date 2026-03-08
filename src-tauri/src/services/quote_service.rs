@@ -1,6 +1,5 @@
 use crate::models::StockQuote;
 use chrono::Utc;
-use encoding_rs::GBK;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -145,103 +144,119 @@ pub async fn fetch_hk_quote(symbol: &str) -> Result<StockQuote, String> {
     fetch_yahoo_quote(&yahoo_symbol, "HK").await
 }
 
-/// Fetch a CN A-share stock quote from Tencent Finance.
+/// East Money API response for a single stock quote.
+#[derive(Debug, Deserialize)]
+struct EastMoneyResponse {
+    rc: Option<i32>,
+    data: Option<EastMoneyData>,
+}
+
+/// Inner data of an East Money quote response.
+/// Field names follow the East Money API convention (f43, f44, …).
+/// With `fltt=2` the numeric fields are returned as floats/integers directly.
+#[derive(Debug, Deserialize)]
+struct EastMoneyData {
+    /// Current price
+    f43: Option<f64>,
+    /// Day high
+    f44: Option<f64>,
+    /// Day low
+    f45: Option<f64>,
+    /// Volume (lots / 手)
+    f47: Option<u64>,
+    /// Stock code (e.g. "600519")
+    f57: Option<String>,
+    /// Stock name (e.g. "贵州茅台")
+    f58: Option<String>,
+    /// Previous close
+    f60: Option<f64>,
+    /// Change amount
+    f169: Option<f64>,
+    /// Change percentage
+    f170: Option<f64>,
+}
+
+/// Fetch a CN A-share stock quote from East Money (东方财富).
 /// Symbol format: "sh600519" (Shanghai) or "sz000858" (Shenzhen).
 /// The symbol is normalised to lowercase automatically.
 pub async fn fetch_cn_quote(symbol: &str) -> Result<StockQuote, String> {
     let symbol = symbol.to_lowercase();
-    let url = format!("https://qt.gtimg.cn/q={}", symbol);
+    let secid = to_eastmoney_secid(&symbol)?;
+    let url = format!(
+        "https://push2.eastmoney.com/api/qt/stock/get?fltt=2&invt=2&fields=f43,f44,f45,f47,f57,f58,f60,f169,f170&secid={}",
+        secid
+    );
+
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()
         .map_err(|e| e.to_string())?;
 
-    let bytes = client
+    let response = client
         .get(&url)
         .header("User-Agent", "Mozilla/5.0")
         .send()
         .await
-        .map_err(|e| format!("Network error fetching {}: {}", symbol, e))?
-        .bytes()
+        .map_err(|e| format!("Network error fetching {}: {}", symbol, e))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "East Money API error for {}: HTTP {}",
+            symbol,
+            response.status()
+        ));
+    }
+
+    let resp: EastMoneyResponse = response
+        .json()
         .await
-        .map_err(|e| format!("Failed to read response bytes for {}: {}", symbol, e))?;
+        .map_err(|e| format!("Failed to parse East Money response for {}: {}", symbol, e))?;
 
-    // Tencent Finance returns GBK-encoded text
-    let (decoded, _, _) = GBK.decode(&bytes);
-    let text = decoded.into_owned();
-
-    parse_tencent_quote(&symbol, &text)
+    parse_eastmoney_quote(&symbol, resp)
 }
 
-/// Parse Tencent Finance quote response.
-/// Format: v_sh600519="1~贵州茅台~600519~1710.50~1690.00~1700.00~...";
-///
-/// Key field indices (tilde-separated):
-///  1: name, 3: current_price, 4: previous_close, 6: volume (lots),
-///  30: datetime (YYYYMMDDHHMMSS), 31: change, 32: change_percent (%),
-///  33: high, 34: low
-fn parse_tencent_quote(symbol: &str, text: &str) -> Result<StockQuote, String> {
-    let start = text
-        .find('"')
-        .ok_or_else(|| format!("Invalid Tencent response for {}: {}", symbol, text))?;
-    let end = text
-        .rfind('"')
-        .ok_or_else(|| format!("Invalid Tencent response for {}: {}", symbol, text))?;
-
-    if start >= end {
-        return Err(format!("Empty or invalid Tencent response for {}", symbol));
+/// Convert a symbol like "sh600519" or "sz000858" to the East Money secid
+/// format: "1.600519" (Shanghai) or "0.000858" (Shenzhen).
+fn to_eastmoney_secid(symbol: &str) -> Result<String, String> {
+    if symbol.len() < 3 {
+        return Err(format!("Invalid CN symbol: {}", symbol));
     }
-
-    let content = &text[start + 1..end];
-    if content.is_empty() {
-        return Err(format!(
-            "No data from Tencent Finance for {}. Symbol may be invalid.",
-            symbol
-        ));
-    }
-
-    let parts: Vec<&str> = content.split('~').collect();
-    if parts.len() < 35 {
-        return Err(format!(
-            "Unexpected Tencent Finance data format for {}: only {} fields",
-            symbol,
-            parts.len()
-        ));
-    }
-
-    // Tencent format fields (tilde-separated):
-    // 1: name, 3: current_price, 4: previous_close, 5: today_open,
-    // 6: volume (lots), 30: datetime (YYYYMMDDHHMMSS),
-    // 31: change, 32: change_percent (%), 33: high, 34: low
-    let name = parts[1].to_string();
-    let current_price: f64 = parts[3].parse().unwrap_or(0.0);
-    let previous_close: f64 = parts[4].parse().unwrap_or(0.0);
-    let volume: u64 = parts[6].parse().unwrap_or(0);
-    let high: f64 = parts[33].parse().unwrap_or(0.0);
-    let low: f64 = parts[34].parse().unwrap_or(0.0);
-
-    let change = current_price - previous_close;
-    let change_percent = if previous_close != 0.0 {
-        change / previous_close * 100.0
-    } else {
-        0.0
+    let prefix = &symbol[..2];
+    let code = &symbol[2..];
+    let market_id = match prefix {
+        "sh" => "1",
+        "sz" => "0",
+        _ => return Err(format!("Unknown CN market prefix '{}' in symbol {}", prefix, symbol)),
     };
+    Ok(format!("{}.{}", market_id, code))
+}
 
-    let datetime_str = parts.get(30).unwrap_or(&"");
-    let updated_at = if datetime_str.len() >= 14 {
-        // Format: YYYYMMDDHHMMSS -> YYYY-MM-DDTHH:MM:SS+08:00
-        format!(
-            "{}-{}-{}T{}:{}:{}+08:00",
-            &datetime_str[0..4],
-            &datetime_str[4..6],
-            &datetime_str[6..8],
-            &datetime_str[8..10],
-            &datetime_str[10..12],
-            &datetime_str[12..14],
-        )
-    } else {
-        Utc::now().to_rfc3339()
-    };
+/// Parse the East Money JSON response into a `StockQuote`.
+fn parse_eastmoney_quote(symbol: &str, resp: EastMoneyResponse) -> Result<StockQuote, String> {
+    let data = resp
+        .data
+        .ok_or_else(|| format!("No data from East Money for {}. Symbol may be invalid.", symbol))?;
+
+    let name = data
+        .f58
+        .ok_or_else(|| format!("Missing stock name in East Money response for {}", symbol))?;
+    let current_price = data
+        .f43
+        .ok_or_else(|| format!("Missing current price in East Money response for {}", symbol))?;
+    let previous_close = data.f60.unwrap_or(0.0);
+
+    let change = data.f169.unwrap_or_else(|| current_price - previous_close);
+    let change_percent = data.f170.unwrap_or_else(|| {
+        if previous_close != 0.0 {
+            change / previous_close * 100.0
+        } else {
+            0.0
+        }
+    });
+
+    let high = data.f44.unwrap_or(0.0);
+    let low = data.f45.unwrap_or(0.0);
+    let volume = data.f47.unwrap_or(0);
 
     Ok(StockQuote {
         symbol: symbol.to_string(),
@@ -254,7 +269,7 @@ fn parse_tencent_quote(symbol: &str, text: &str) -> Result<StockQuote, String> {
         high,
         low,
         volume,
-        updated_at,
+        updated_at: Utc::now().to_rfc3339(),
     })
 }
 
@@ -283,55 +298,48 @@ pub async fn fetch_quotes_batch(
 mod tests {
     use super::*;
 
-    // Helper: build a synthetic Tencent response string with enough fields.
-    // Tencent fields (tilde-separated, 0-indexed):
-    //  0:market, 1:name, 2:code, 3:current, 4:prev_close, 5:open,
-    //  6:volume, 7-29:misc, 30:datetime, 31:change, 32:change_pct,
-    //  33:high, 34:low
-    fn make_tencent_response(
-        symbol: &str,
+    // Helper: build a synthetic East Money JSON response.
+    fn make_eastmoney_response(
+        code: &str,
         name: &str,
         current: f64,
         prev_close: f64,
         high: f64,
         low: f64,
         volume: u64,
-        datetime: &str,
-    ) -> String {
-        // Build a slice of 45 placeholder fields, overwriting key positions.
-        let mut fields = vec!["0".to_string(); 45];
-        fields[0] = "1".to_string();
-        fields[1] = name.to_string();
-        fields[2] = symbol[2..].to_string(); // strip "sh"/"sz"
-        fields[3] = format!("{:.2}", current);
-        fields[4] = format!("{:.2}", prev_close);
-        fields[5] = format!("{:.2}", current); // open == current (irrelevant)
-        fields[6] = volume.to_string();
-        fields[30] = datetime.to_string();
-        fields[31] = format!("{:.2}", current - prev_close);
-        fields[32] = if prev_close != 0.0 {
-            format!("{:.2}", (current - prev_close) / prev_close * 100.0)
-        } else {
-            "0.00".to_string()
-        };
-        fields[33] = format!("{:.2}", high);
-        fields[34] = format!("{:.2}", low);
-        format!("v_{}=\"{}\";", symbol, fields.join("~"))
+        change: f64,
+        change_pct: f64,
+    ) -> EastMoneyResponse {
+        EastMoneyResponse {
+            rc: Some(0),
+            data: Some(EastMoneyData {
+                f43: Some(current),
+                f44: Some(high),
+                f45: Some(low),
+                f47: Some(volume),
+                f57: Some(code.to_string()),
+                f58: Some(name.to_string()),
+                f60: Some(prev_close),
+                f169: Some(change),
+                f170: Some(change_pct),
+            }),
+        }
     }
 
     #[test]
-    fn test_parse_tencent_quote_valid() {
-        let text = make_tencent_response(
-            "sh600519",
+    fn test_parse_eastmoney_quote_valid() {
+        let resp = make_eastmoney_response(
+            "600519",
             "贵州茅台",
             1710.50,
             1690.00,
             1720.00,
             1685.00,
             12345,
-            "20240115150003",
+            20.50,
+            1.21,
         );
-        let result = parse_tencent_quote("sh600519", &text);
+        let result = parse_eastmoney_quote("sh600519", resp);
         assert!(result.is_ok(), "Expected Ok, got: {:?}", result);
         let quote = result.unwrap();
         assert_eq!(quote.symbol, "sh600519");
@@ -342,29 +350,56 @@ mod tests {
         assert!((quote.high - 1720.00).abs() < 0.001);
         assert!((quote.low - 1685.00).abs() < 0.001);
         assert_eq!(quote.volume, 12345);
-        assert_eq!(quote.updated_at, "2024-01-15T15:00:03+08:00");
+        assert!((quote.change - 20.50).abs() < 0.001);
+        assert!((quote.change_percent - 1.21).abs() < 0.001);
     }
 
     #[test]
-    fn test_parse_tencent_quote_empty() {
-        let text = r#"v_sh999999="";"#;
-        let result = parse_tencent_quote("sh999999", text);
+    fn test_parse_eastmoney_quote_no_data() {
+        let resp = EastMoneyResponse {
+            rc: Some(0),
+            data: None,
+        };
+        let result = parse_eastmoney_quote("sh999999", resp);
         assert!(result.is_err());
+        assert!(result.unwrap_err().contains("No data from East Money"));
     }
 
     #[test]
-    fn test_parse_tencent_quote_change_calculation() {
-        let text = make_tencent_response(
-            "sh600519",
+    fn test_parse_eastmoney_quote_missing_price() {
+        let resp = EastMoneyResponse {
+            rc: Some(0),
+            data: Some(EastMoneyData {
+                f43: None,
+                f44: Some(1720.00),
+                f45: Some(1685.00),
+                f47: Some(12345),
+                f57: Some("600519".to_string()),
+                f58: Some("贵州茅台".to_string()),
+                f60: Some(1690.00),
+                f169: Some(20.50),
+                f170: Some(1.21),
+            }),
+        };
+        let result = parse_eastmoney_quote("sh600519", resp);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Missing current price"));
+    }
+
+    #[test]
+    fn test_parse_eastmoney_quote_change_calculation() {
+        let resp = make_eastmoney_response(
+            "600519",
             "贵州茅台",
             1100.00,
             1000.00,
             1200.00,
             950.00,
             99999,
-            "20240115150003",
+            100.00,
+            10.00,
         );
-        let result = parse_tencent_quote("sh600519", &text);
+        let result = parse_eastmoney_quote("sh600519", resp);
         assert!(result.is_ok());
         let quote = result.unwrap();
         assert!((quote.change - 100.0).abs() < 0.001);
@@ -372,46 +407,94 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_tencent_quote_symbol_stored_as_given() {
-        // The parser stores the symbol exactly as provided. The caller
-        // (fetch_cn_quote) is responsible for lowercasing before calling here.
-        // This test confirms that a lowercase symbol is stored correctly.
-        let text = make_tencent_response(
-            "sh600519",
+    fn test_parse_eastmoney_quote_symbol_stored_as_given() {
+        let resp = make_eastmoney_response(
+            "600519",
             "贵州茅台",
             1710.50,
             1690.00,
             1720.00,
             1685.00,
             12345,
-            "20240115150003",
+            20.50,
+            1.21,
         );
-        let result = parse_tencent_quote("sh600519", &text);
+        let result = parse_eastmoney_quote("sh600519", resp);
         assert!(result.is_ok());
         assert_eq!(result.unwrap().symbol, "sh600519");
     }
 
     #[test]
     fn test_fetch_cn_quote_normalises_symbol_to_lowercase() {
-        // Verify that to_lowercase() on a mixed-case symbol produces what the
-        // API expects.  We cannot call fetch_cn_quote directly in a unit test
-        // (it makes a real network request), so we assert the string transform
-        // is correct and pass the lowercased value to the parser.
+        // Verify that to_lowercase() on a mixed-case symbol produces what
+        // the API expects.  We cannot call fetch_cn_quote directly in a
+        // unit test (it makes a real network request), so we assert the
+        // string transform is correct and pass the lowercased value to
+        // the parser.
         let mixed = "Sh600519";
         let lower = mixed.to_lowercase();
         assert_eq!(lower, "sh600519");
-        let text = make_tencent_response(
-            &lower,
+        let resp = make_eastmoney_response(
+            "600519",
             "贵州茅台",
             1710.50,
             1690.00,
             1720.00,
             1685.00,
             12345,
-            "20240115150003",
+            20.50,
+            1.21,
         );
-        let result = parse_tencent_quote(&lower, &text);
+        let result = parse_eastmoney_quote(&lower, resp);
         assert!(result.is_ok());
         assert_eq!(result.unwrap().symbol, "sh600519");
+    }
+
+    #[test]
+    fn test_to_eastmoney_secid_shanghai() {
+        let secid = to_eastmoney_secid("sh600519").unwrap();
+        assert_eq!(secid, "1.600519");
+    }
+
+    #[test]
+    fn test_to_eastmoney_secid_shenzhen() {
+        let secid = to_eastmoney_secid("sz000858").unwrap();
+        assert_eq!(secid, "0.000858");
+    }
+
+    #[test]
+    fn test_to_eastmoney_secid_invalid_prefix() {
+        let result = to_eastmoney_secid("hk00700");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_to_eastmoney_secid_too_short() {
+        let result = to_eastmoney_secid("sh");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_eastmoney_quote_fallback_change_calculation() {
+        // When f169/f170 are missing, change should be computed from price
+        let resp = EastMoneyResponse {
+            rc: Some(0),
+            data: Some(EastMoneyData {
+                f43: Some(1100.00),
+                f44: Some(1200.00),
+                f45: Some(950.00),
+                f47: Some(99999),
+                f57: Some("600519".to_string()),
+                f58: Some("贵州茅台".to_string()),
+                f60: Some(1000.00),
+                f169: None,
+                f170: None,
+            }),
+        };
+        let result = parse_eastmoney_quote("sh600519", resp);
+        assert!(result.is_ok());
+        let quote = result.unwrap();
+        assert!((quote.change - 100.0).abs() < 0.001);
+        assert!((quote.change_percent - 10.0).abs() < 0.001);
     }
 }
