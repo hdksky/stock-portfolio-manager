@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   Typography,
   Button,
@@ -17,11 +17,12 @@ import {
   Spin,
 } from "antd";
 import { PlusOutlined, ReloadOutlined, SyncOutlined } from "@ant-design/icons";
+import { invoke } from "@tauri-apps/api/core";
 import { useHoldingStore } from "../../stores/holdingStore";
 import { useAccountStore } from "../../stores/accountStore";
 import { useCategoryStore } from "../../stores/categoryStore";
 import { useQuoteStore } from "../../stores/quoteStore";
-import type { Holding, HoldingWithQuote, Market, Currency } from "../../types";
+import type { Holding, HoldingWithQuote, Market, Currency, StockQuote } from "../../types";
 import dayjs from "dayjs";
 
 const { Title, Text } = Typography;
@@ -58,6 +59,61 @@ export default function HoldingsPage() {
   const [editingHolding, setEditingHolding] = useState<Holding | null>(null);
   const [showRealtime, setShowRealtime] = useState(true);
   const [form] = Form.useForm();
+  const [fetchingName, setFetchingName] = useState(false);
+
+  const marketToCurrency: Record<Market, Currency> = {
+    US: "USD",
+    CN: "CNY",
+    HK: "HKD",
+  };
+
+  const handleAccountChange = useCallback(
+    (accountId: string) => {
+      const account = accounts.find((a) => a.id === accountId);
+      if (account) {
+        form.setFieldsValue({
+          market: account.market,
+          currency: marketToCurrency[account.market],
+        });
+      }
+    },
+    [accounts, form],
+  );
+
+  const fetchStockName = useCallback(
+    async (symbol: string) => {
+      if (!symbol || !symbol.trim()) return;
+      const market: Market | undefined = form.getFieldValue("market");
+      if (!market) return;
+
+      setFetchingName(true);
+      try {
+        const commandMap: Record<Market, string> = {
+          US: "get_us_quote",
+          CN: "get_cn_quote",
+          HK: "get_hk_quote",
+        };
+        const quote = await invoke<StockQuote>(commandMap[market], {
+          symbol: symbol.trim(),
+        });
+        if (quote && quote.name) {
+          form.setFieldsValue({ name: quote.name });
+        }
+      } catch {
+        // Silently ignore - user can still type the name manually
+      } finally {
+        setFetchingName(false);
+      }
+    },
+    [form],
+  );
+
+  const handleSymbolBlur = useCallback(
+    (e: React.FocusEvent<HTMLInputElement>) => {
+      fetchStockName(e.target.value);
+    },
+    [fetchStockName],
+  );
 
   useEffect(() => {
     fetchHoldings();
@@ -317,7 +373,7 @@ export default function HoldingsPage() {
             label="所属账户"
             rules={[{ required: true, message: "请选择账户" }]}
           >
-            <Select placeholder="选择证券账户">
+            <Select placeholder="选择证券账户" onChange={handleAccountChange}>
               {accounts.map((a) => (
                 <Select.Option key={a.id} value={a.id}>
                   [{a.market}] {a.name}
@@ -330,14 +386,17 @@ export default function HoldingsPage() {
             label="股票代码"
             rules={[{ required: true, message: "请输入股票代码" }]}
           >
-            <Input placeholder="如：AAPL, sh600519, 0700.HK" />
+            <Input placeholder="如：AAPL, sh600519, 0700.HK" onBlur={handleSymbolBlur} />
           </Form.Item>
           <Form.Item
             name="name"
             label="股票名称"
             rules={[{ required: true, message: "请输入股票名称" }]}
           >
-            <Input placeholder="如：苹果, 贵州茅台, 腾讯控股" />
+            <Input
+              placeholder="如：苹果, 贵州茅台, 腾讯控股"
+              suffix={fetchingName ? <Spin size="small" /> : undefined}
+            />
           </Form.Item>
           <Form.Item
             name="market"
