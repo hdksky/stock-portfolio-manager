@@ -12,7 +12,10 @@ pub async fn get_real_time_quotes(
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub async fn get_holding_quotes(db: State<'_, Database>, quote_cache: State<'_, QuoteCache>) -> Result<Vec<HoldingWithQuote>, String> {
+pub async fn get_holding_quotes(
+    db: State<'_, Database>,
+    quote_cache: State<'_, QuoteCache>,
+) -> Result<Vec<HoldingWithQuote>, String> {
     // Load holdings from DB (synchronous)
     let holdings = {
         let conn = db.conn.lock().map_err(|e| e.to_string())?;

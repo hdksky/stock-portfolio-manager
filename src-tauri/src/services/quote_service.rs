@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-const QUOTE_CACHE_TTL_SECS: u64 = 60; // 1-minute cache
+const QUOTE_CACHE_TTL_SECS: u64 = 60; // 60-second cache
 
 struct CachedQuote {
     quote: StockQuote,
