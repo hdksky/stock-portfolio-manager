@@ -191,9 +191,9 @@ mod tests {
     fn test_quote_provider_config_default() {
         let db = create_test_db();
         let config = crate::services::quote_provider_service::get_quote_provider_config(&db).unwrap();
-        assert_eq!(config.us_provider, "xueqiu");
-        assert_eq!(config.hk_provider, "xueqiu");
-        assert_eq!(config.cn_provider, "xueqiu");
+        assert_eq!(config.us_provider, "yahoo");
+        assert_eq!(config.hk_provider, "yahoo");
+        assert_eq!(config.cn_provider, "eastmoney");
     }
 
     #[test]
@@ -202,7 +202,7 @@ mod tests {
         let config = crate::models::quote_provider::QuoteProviderConfig {
             us_provider: "yahoo".to_string(),
             hk_provider: "yahoo".to_string(),
-            cn_provider: "xueqiu".to_string(),
+            cn_provider: "eastmoney".to_string(),
         };
         let result = crate::services::quote_provider_service::update_quote_provider_config(&db, &config);
         assert!(result.is_ok());
@@ -210,7 +210,7 @@ mod tests {
         let loaded = crate::services::quote_provider_service::get_quote_provider_config(&db).unwrap();
         assert_eq!(loaded.us_provider, "yahoo");
         assert_eq!(loaded.hk_provider, "yahoo");
-        assert_eq!(loaded.cn_provider, "xueqiu");
+        assert_eq!(loaded.cn_provider, "eastmoney");
     }
 
     #[test]
@@ -218,8 +218,8 @@ mod tests {
         let db = create_test_db();
         let config = crate::models::quote_provider::QuoteProviderConfig {
             us_provider: "invalid".to_string(),
-            hk_provider: "xueqiu".to_string(),
-            cn_provider: "xueqiu".to_string(),
+            hk_provider: "yahoo".to_string(),
+            cn_provider: "eastmoney".to_string(),
         };
         let result = crate::services::quote_provider_service::update_quote_provider_config(&db, &config);
         assert!(result.is_err());
@@ -229,8 +229,8 @@ mod tests {
     fn test_quote_provider_config_invalid_cn_provider() {
         let db = create_test_db();
         let config = crate::models::quote_provider::QuoteProviderConfig {
-            us_provider: "xueqiu".to_string(),
-            hk_provider: "xueqiu".to_string(),
+            us_provider: "yahoo".to_string(),
+            hk_provider: "yahoo".to_string(),
             cn_provider: "yahoo".to_string(),
         };
         let result = crate::services::quote_provider_service::update_quote_provider_config(&db, &config);
