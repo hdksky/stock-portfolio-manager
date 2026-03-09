@@ -472,7 +472,8 @@ struct EastMoneyData {
 /// Fetch a CN A-share stock quote from East Money (东方财富).
 /// Symbol format: "sh600519" (Shanghai) or "sz000858" (Shenzhen).
 /// The symbol is normalised to lowercase automatically.
-/// Kept for internal / fallback use.
+/// Kept as a fallback implementation; not currently used in favour of Xueqiu.
+#[allow(dead_code)]
 async fn fetch_eastmoney_cn_quote(symbol: &str) -> Result<StockQuote, String> {
     let symbol = symbol.to_lowercase();
     let secid = to_eastmoney_secid(&symbol)?;

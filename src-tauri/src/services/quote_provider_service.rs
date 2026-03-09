@@ -37,7 +37,7 @@ pub fn update_quote_provider_config(
         _ => return Err(format!("Invalid HK provider: {}", config.hk_provider)),
     }
     if config.cn_provider != "xueqiu" {
-        return Err(format!("Invalid CN provider: {}. Only 'xueqiu' is supported.", config.cn_provider));
+        return Err(format!("Invalid CN provider ({}). Only 'xueqiu' is supported.", config.cn_provider));
     }
 
     let conn = db.conn.lock().unwrap();
