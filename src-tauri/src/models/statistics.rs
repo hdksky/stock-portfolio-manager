@@ -25,6 +25,7 @@ pub struct StatisticsOverview {
     pub market_distribution: Vec<PieSlice>,
     pub category_distribution: Vec<PieSlice>,
     pub account_distribution: Vec<PieSlice>,
+    pub stock_distribution: Vec<PieSlice>,
     pub top_gainers: Vec<PnlItem>,
     pub top_losers: Vec<PnlItem>,
 }

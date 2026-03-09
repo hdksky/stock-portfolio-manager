@@ -155,6 +155,7 @@ export interface StatisticsOverview {
   market_distribution: PieSlice[];
   category_distribution: PieSlice[];
   account_distribution: PieSlice[];
+  stock_distribution: PieSlice[];
   top_gainers: PnlItem[];
   top_losers: PnlItem[];
 }
