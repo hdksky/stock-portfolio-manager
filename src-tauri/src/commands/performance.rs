@@ -6,6 +6,10 @@ use crate::models::performance::{
 use crate::services::performance_service;
 use tauri::State;
 
+/// How many calendar days before the requested start to fetch so we can find
+/// the previous trading day's closing price for the baseline.
+const BENCHMARK_BASELINE_LOOKBACK_DAYS: i64 = 10;
+
 fn parse_date(s: &str) -> Result<chrono::NaiveDate, String> {
     crate::models::performance::parse_date(s)
 }
@@ -41,9 +45,24 @@ pub async fn get_benchmark_return_series(
 ) -> Result<Vec<ReturnDataPoint>, String> {
     let start = parse_date(&start_date)?;
     let end = parse_date(&end_date)?;
+    // Fetch a few extra days before start so we can find the previous
+    // trading day's closing price to use as the baseline.
+    let fetch_start = start - chrono::Duration::days(BENCHMARK_BASELINE_LOOKBACK_DAYS);
     let points =
-        performance_service::fetch_benchmark_history(&db, &symbol, start, end).await?;
-    Ok(performance_service::benchmark_to_return_series(&points))
+        performance_service::fetch_benchmark_history(&db, &symbol, fetch_start, end).await?;
+    let start_str = start.format("%Y-%m-%d").to_string();
+    let base_price = points
+        .iter()
+        .filter(|p| p.date < start_str)
+        .last()
+        .map(|p| p.close_price);
+    let visible: Vec<_> = points
+        .into_iter()
+        .filter(|p| p.date >= start_str)
+        .collect();
+    Ok(performance_service::benchmark_to_return_series(
+        &visible, base_price,
+    ))
 }
 
 #[tauri::command(rename_all = "camelCase")]
