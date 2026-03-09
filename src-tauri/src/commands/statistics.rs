@@ -31,6 +31,7 @@ pub async fn get_statistics_overview(
     let mut market_map: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
     let mut category_map: std::collections::HashMap<(String, Option<String>), f64> = std::collections::HashMap::new();
     let mut account_map: std::collections::HashMap<(String, String), f64> = std::collections::HashMap::new();
+    let mut stock_map: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
 
     let mut total_market_value = 0.0f64;
     let mut total_cost = 0.0f64;
@@ -45,6 +46,9 @@ pub async fn get_statistics_overview(
             .or_insert(0.0) += mv_usd;
         *account_map
             .entry((d.account_id.clone(), d.account_name.clone()))
+            .or_insert(0.0) += mv_usd;
+        *stock_map
+            .entry(format!("{} {}", d.symbol, d.name))
             .or_insert(0.0) += mv_usd;
 
         total_market_value += mv_usd;
@@ -88,6 +92,12 @@ pub async fn get_statistics_overview(
         .collect();
     account_distribution.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap_or(std::cmp::Ordering::Equal));
 
+    let mut stock_distribution: Vec<PieSlice> = stock_map
+        .into_iter()
+        .map(|(k, v)| PieSlice { name: k, value: v, color: None })
+        .collect();
+    stock_distribution.sort_by(|a, b| b.value.partial_cmp(&a.value).unwrap_or(std::cmp::Ordering::Equal));
+
     // Top gainers/losers by absolute PnL (in USD)
     let mut pnl_items: Vec<PnlItem> = details
         .iter()
@@ -123,6 +133,7 @@ pub async fn get_statistics_overview(
         market_distribution,
         category_distribution,
         account_distribution,
+        stock_distribution,
         top_gainers,
         top_losers,
     })

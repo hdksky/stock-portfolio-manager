@@ -89,6 +89,17 @@ export default function OverviewTab({ overview, loading }: Props) {
         </Col>
       </Row>
 
+      {/* Stock distribution chart */}
+      {overview.stock_distribution.length > 0 && (
+        <Row gutter={[16, 16]} className="mt-4">
+          <Col xs={24}>
+            <Card title="个股分布">
+              <PieChart data={overview.stock_distribution} height={360} />
+            </Card>
+          </Col>
+        </Row>
+      )}
+
       {/* PnL charts */}
       {(gainersData.length > 0 || losersData.length > 0) && (
         <Row gutter={[16, 16]} className="mt-4">
