@@ -8,6 +8,7 @@ pub mod import_export;
 pub mod performance;
 pub mod quarterly;
 pub mod quote;
+pub mod quote_provider;
 pub mod review;
 pub mod statistics;
 pub mod transaction;
@@ -29,6 +30,7 @@ pub use quarterly::{
     QuarterlyNotesSummary, QuarterlySnapshot, QuarterlySnapshotDetail, QuarterlyTrends,
 };
 pub use quote::{DailyHoldingSnapshot, DailyPortfolioValue, ExchangeRates, HoldingWithQuote, StockQuote};
+pub use quote_provider::QuoteProviderConfig;
 pub use review::{DecisionStatistics, HoldingReview, QuarterlyHoldingStatus};
 pub use statistics::{AccountStatistics, CategoryStatistics, MarketStatistics, PieSlice, PnlItem, StatisticsOverview};
 pub use transaction::Transaction;

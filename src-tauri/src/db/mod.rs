@@ -226,6 +226,16 @@ impl Database {
         ")?;
 
         conn.execute_batch("
+            CREATE TABLE IF NOT EXISTS quote_provider_config (
+                id INTEGER PRIMARY KEY DEFAULT 1,
+                us_provider TEXT NOT NULL DEFAULT 'xueqiu',
+                hk_provider TEXT NOT NULL DEFAULT 'xueqiu',
+                cn_provider TEXT NOT NULL DEFAULT 'xueqiu',
+                updated_at TEXT NOT NULL DEFAULT ''
+            );
+        ")?;
+
+        conn.execute_batch("
             CREATE TABLE IF NOT EXISTS ai_config (
                 id INTEGER PRIMARY KEY DEFAULT 1,
                 provider TEXT NOT NULL DEFAULT 'openai',

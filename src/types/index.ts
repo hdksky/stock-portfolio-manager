@@ -584,3 +584,12 @@ export interface AiConfig {
   system_prompt: string;
 }
 
+// Quote Provider Config
+export type QuoteProvider = "xueqiu" | "yahoo";
+
+export interface QuoteProviderConfig {
+  us_provider: QuoteProvider;
+  hk_provider: QuoteProvider;
+  cn_provider: QuoteProvider;
+}
+

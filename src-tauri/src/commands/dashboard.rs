@@ -3,7 +3,8 @@ use crate::models::{
     DashboardSummary, ExchangeRates, HoldingDetail,
 };
 use crate::services::exchange_rate_service::{convert_currency, get_cached_rates, ExchangeRateCache};
-use crate::services::quote_service::{fetch_quotes_batch_cached, QuoteCache};
+use crate::services::quote_service::{fetch_quotes_batch_cached_with_providers, QuoteCache};
+use crate::services::quote_provider_service;
 use tauri::State;
 
 /// Build HoldingDetail records from raw holdings + quotes + account/category lookups.
@@ -81,7 +82,10 @@ async fn build_holding_details(
         .iter()
         .map(|r| (r.symbol.clone(), r.market.clone()))
         .collect();
-    let quotes = fetch_quotes_batch_cached(quote_cache, symbols).await?;
+    let quotes = {
+        let config = quote_provider_service::get_quote_provider_config(db)?;
+        fetch_quotes_batch_cached_with_providers(quote_cache, symbols, &config.us_provider, &config.hk_provider).await?
+    };
     let quote_map: std::collections::HashMap<String, f64> = quotes
         .into_iter()
         .map(|q| (q.symbol.clone(), q.current_price))
