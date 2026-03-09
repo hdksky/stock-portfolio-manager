@@ -16,20 +16,19 @@ const INTERVAL_OPTIONS = [
 ];
 
 const PROVIDER_OPTIONS_US_HK = [
-  { value: "xueqiu", label: "雪球（默认）" },
-  { value: "yahoo", label: "Yahoo Finance" },
+  { value: "yahoo", label: "Yahoo Finance（默认）" },
 ];
 
 const PROVIDER_OPTIONS_CN = [
-  { value: "xueqiu", label: "雪球（默认）" },
+  { value: "eastmoney", label: "东方财富（默认）" },
 ];
 
 export default function GeneralSettings() {
   const { refreshIntervalMs, setRefreshInterval } = useQuoteStore();
   const [providerConfig, setProviderConfig] = useState<QuoteProviderConfig>({
-    us_provider: "xueqiu",
-    hk_provider: "xueqiu",
-    cn_provider: "xueqiu",
+    us_provider: "yahoo",
+    hk_provider: "yahoo",
+    cn_provider: "eastmoney",
   });
 
   useEffect(() => {
@@ -87,7 +86,7 @@ export default function GeneralSettings() {
           </Form.Item>
         </Form>
         <Paragraph type="secondary">
-          选择各市场的行情数据来源。默认使用雪球获取所有市场数据。港股和美股可选用 Yahoo Finance 作为替代数据源。修改后将在下次刷新时生效。
+          各市场的行情数据来源：A股使用东方财富，港股和美股使用 Yahoo Finance。修改后将在下次刷新时生效。
         </Paragraph>
       </Card>
 
