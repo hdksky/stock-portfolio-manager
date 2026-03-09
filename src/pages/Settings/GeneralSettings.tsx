@@ -1,5 +1,8 @@
+import { useEffect, useState } from "react";
 import { Card, Form, Select, Typography, message } from "antd";
+import { invoke } from "@tauri-apps/api/core";
 import { useQuoteStore } from "../../stores/quoteStore";
+import type { QuoteProviderConfig } from "../../types";
 
 const { Paragraph } = Typography;
 
@@ -12,22 +15,88 @@ const INTERVAL_OPTIONS = [
   { value: 30 * 60_000, label: "30 分钟" },
 ];
 
+const PROVIDER_OPTIONS_US_HK = [
+  { value: "xueqiu", label: "雪球（默认）" },
+  { value: "yahoo", label: "Yahoo Finance" },
+];
+
+const PROVIDER_OPTIONS_CN = [
+  { value: "xueqiu", label: "雪球（默认）" },
+];
+
 export default function GeneralSettings() {
   const { refreshIntervalMs, setRefreshInterval } = useQuoteStore();
+  const [providerConfig, setProviderConfig] = useState<QuoteProviderConfig>({
+    us_provider: "xueqiu",
+    hk_provider: "xueqiu",
+    cn_provider: "xueqiu",
+  });
 
-  const handleChange = (value: number) => {
+  useEffect(() => {
+    invoke<QuoteProviderConfig>("get_quote_provider_config")
+      .then(setProviderConfig)
+      .catch(() => {
+        // Use defaults on error
+      });
+  }, []);
+
+  const handleIntervalChange = (value: number) => {
     setRefreshInterval(value);
     message.success("刷新频率已更新");
   };
 
+  const handleProviderChange = async (
+    market: keyof QuoteProviderConfig,
+    value: string
+  ) => {
+    const updated = { ...providerConfig, [market]: value };
+    try {
+      await invoke("update_quote_provider_config", { config: updated });
+      setProviderConfig(updated);
+      message.success("行情数据源已更新");
+    } catch (err) {
+      message.error("更新失败: " + String(err));
+    }
+  };
+
   return (
     <div className="space-y-6">
+      <Card title="行情数据源设置">
+        <Form layout="vertical" style={{ maxWidth: 400 }}>
+          <Form.Item label="美股数据源">
+            <Select
+              value={providerConfig.us_provider}
+              onChange={(v) => handleProviderChange("us_provider", v)}
+              options={PROVIDER_OPTIONS_US_HK}
+            />
+          </Form.Item>
+          <Form.Item label="港股数据源">
+            <Select
+              value={providerConfig.hk_provider}
+              onChange={(v) => handleProviderChange("hk_provider", v)}
+              options={PROVIDER_OPTIONS_US_HK}
+            />
+          </Form.Item>
+          <Form.Item label="A股数据源">
+            <Select
+              value={providerConfig.cn_provider}
+              onChange={(v) => handleProviderChange("cn_provider", v)}
+              options={PROVIDER_OPTIONS_CN}
+              disabled
+            />
+          </Form.Item>
+        </Form>
+        <Paragraph type="secondary">
+          选择各市场的行情数据来源。默认使用雪球获取所有市场数据。港股和美股可选用 Yahoo Finance 作为替代数据源。修改后将在下次刷新时生效。
+        </Paragraph>
+      </Card>
+
       <Card title="行情刷新设置">
         <Form layout="vertical" style={{ maxWidth: 400 }}>
           <Form.Item label="自动刷新频率">
             <Select
               value={refreshIntervalMs}
-              onChange={handleChange}
+              onChange={handleIntervalChange}
               options={INTERVAL_OPTIONS}
             />
           </Form.Item>

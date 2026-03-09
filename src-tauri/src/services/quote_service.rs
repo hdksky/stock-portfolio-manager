@@ -95,13 +95,23 @@ pub async fn fetch_quotes_batch_cached(
     cache: &QuoteCache,
     symbols: Vec<(String, String)>,
 ) -> Result<Vec<StockQuote>, String> {
+    fetch_quotes_batch_cached_with_providers(cache, symbols, "xueqiu", "xueqiu").await
+}
+
+/// Batch fetch quotes using the cache with specified providers.
+pub async fn fetch_quotes_batch_cached_with_providers(
+    cache: &QuoteCache,
+    symbols: Vec<(String, String)>,
+    us_provider: &str,
+    hk_provider: &str,
+) -> Result<Vec<StockQuote>, String> {
     let (mut result, missing) = cache.get_batch(&symbols);
 
     if missing.is_empty() {
         return Ok(result);
     }
 
-    let fresh = fetch_quotes_batch(missing.clone()).await?;
+    let fresh = fetch_quotes_batch_with_providers(missing.clone(), us_provider, hk_provider).await?;
     cache.set_batch(&fresh);
     result.extend(fresh);
 
@@ -247,20 +257,185 @@ pub async fn fetch_yahoo_quote(symbol: &str, market: &str) -> Result<StockQuote,
     })
 }
 
-/// Fetch a US stock quote.
+/// Fetch a US stock quote using the configured provider.
 pub async fn fetch_us_quote(symbol: &str) -> Result<StockQuote, String> {
-    fetch_yahoo_quote(symbol, "US").await
+    fetch_us_quote_with_provider(symbol, "xueqiu").await
 }
 
-/// Fetch a HK stock quote. Appends ".HK" if not present.
-pub async fn fetch_hk_quote(symbol: &str) -> Result<StockQuote, String> {
-    let yahoo_symbol = if symbol.ends_with(".HK") || symbol.ends_with(".hk") {
-        symbol.to_string()
-    } else {
-        format!("{}.HK", symbol)
-    };
-    fetch_yahoo_quote(&yahoo_symbol, "HK").await
+/// Fetch a US stock quote using the specified provider.
+pub async fn fetch_us_quote_with_provider(symbol: &str, provider: &str) -> Result<StockQuote, String> {
+    match provider {
+        "yahoo" => fetch_yahoo_quote(symbol, "US").await,
+        _ => fetch_xueqiu_quote(symbol, "US").await,
+    }
 }
+
+/// Fetch a HK stock quote using the configured provider. Appends ".HK" if not present for Yahoo.
+pub async fn fetch_hk_quote(symbol: &str) -> Result<StockQuote, String> {
+    fetch_hk_quote_with_provider(symbol, "xueqiu").await
+}
+
+/// Fetch a HK stock quote using the specified provider.
+pub async fn fetch_hk_quote_with_provider(symbol: &str, provider: &str) -> Result<StockQuote, String> {
+    match provider {
+        "yahoo" => {
+            let yahoo_symbol = if symbol.ends_with(".HK") || symbol.ends_with(".hk") {
+                symbol.to_string()
+            } else {
+                format!("{}.HK", symbol)
+            };
+            fetch_yahoo_quote(&yahoo_symbol, "HK").await
+        }
+        _ => fetch_xueqiu_quote(symbol, "HK").await,
+    }
+}
+
+/// Fetch a CN A-share stock quote (always uses Xueqiu).
+pub async fn fetch_cn_quote(symbol: &str) -> Result<StockQuote, String> {
+    fetch_xueqiu_quote(symbol, "CN").await
+}
+
+// ---------------------------------------------------------------------------
+// Xueqiu (雪球) API
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+struct XueqiuResponse {
+    data: Option<Vec<XueqiuQuoteData>>,
+    error_code: Option<i32>,
+    error_description: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct XueqiuQuoteData {
+    symbol: Option<String>,
+    name: Option<String>,
+    current: Option<f64>,
+    percent: Option<f64>,
+    chg: Option<f64>,
+    high: Option<f64>,
+    low: Option<f64>,
+    volume: Option<u64>,
+    last_close: Option<f64>,
+}
+
+/// Convert a local symbol + market into the Xueqiu symbol format.
+///
+/// - CN: "sh600519" → "SH600519", "sz000858" → "SZ000858"
+/// - HK: "00700" → "00700" (unchanged)
+/// - US: "AAPL" → "AAPL" (unchanged)
+fn to_xueqiu_symbol(symbol: &str, market: &str) -> String {
+    match market {
+        "CN" => symbol.to_uppercase(),
+        _ => symbol.to_string(),
+    }
+}
+
+/// Fetch a stock quote from the Xueqiu (雪球) API.
+///
+/// The API requires a session cookie obtained from the main page first.
+pub async fn fetch_xueqiu_quote(symbol: &str, market: &str) -> Result<StockQuote, String> {
+    let xq_symbol = to_xueqiu_symbol(symbol, market);
+
+    let client = reqwest::Client::builder()
+        .cookie_store(true)
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    // Obtain session cookie
+    client
+        .get("https://xueqiu.com")
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to get Xueqiu session: {}", e))?;
+
+    let url = format!(
+        "https://stock.xueqiu.com/v5/stock/realtime/quotec.json?symbol={}",
+        xq_symbol
+    );
+
+    let response = client
+        .get(&url)
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .header("Referer", "https://xueqiu.com/")
+        .send()
+        .await
+        .map_err(|e| format!("Network error fetching {} from Xueqiu: {}", symbol, e))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Xueqiu API error for {}: HTTP {}",
+            symbol,
+            response.status()
+        ));
+    }
+
+    let resp: XueqiuResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse Xueqiu response for {}: {}", symbol, e))?;
+
+    parse_xueqiu_quote(symbol, market, resp)
+}
+
+/// Parse the Xueqiu JSON response into a `StockQuote`.
+fn parse_xueqiu_quote(
+    original_symbol: &str,
+    market: &str,
+    resp: XueqiuResponse,
+) -> Result<StockQuote, String> {
+    if let Some(code) = resp.error_code {
+        if code != 0 {
+            let desc = resp.error_description.unwrap_or_default();
+            return Err(format!("Xueqiu API error for {}: {} (code {})", original_symbol, desc, code));
+        }
+    }
+
+    let data_list = resp
+        .data
+        .ok_or_else(|| format!("No data from Xueqiu for {}", original_symbol))?;
+
+    let data = data_list
+        .into_iter()
+        .next()
+        .ok_or_else(|| format!("Empty data array from Xueqiu for {}", original_symbol))?;
+
+    let name = data
+        .name
+        .ok_or_else(|| format!("Missing name in Xueqiu response for {}", original_symbol))?;
+    let current_price = data
+        .current
+        .ok_or_else(|| format!("Missing current price in Xueqiu response for {}", original_symbol))?;
+    let previous_close = data.last_close.unwrap_or(0.0);
+    let change = data.chg.unwrap_or_else(|| current_price - previous_close);
+    let change_percent = data.percent.unwrap_or_else(|| {
+        if previous_close != 0.0 {
+            change / previous_close * 100.0
+        } else {
+            0.0
+        }
+    });
+
+    Ok(StockQuote {
+        symbol: original_symbol.to_string(),
+        name,
+        market: market.to_string(),
+        current_price,
+        previous_close,
+        change,
+        change_percent,
+        high: data.high.unwrap_or(0.0),
+        low: data.low.unwrap_or(0.0),
+        volume: data.volume.unwrap_or(0),
+        updated_at: Utc::now().to_rfc3339(),
+    })
+}
+
+// ---------------------------------------------------------------------------
+// East Money (东方财富) API – kept for internal / fallback use
+// ---------------------------------------------------------------------------
 
 /// East Money API response for a single stock quote.
 #[derive(Debug, Deserialize)]
@@ -297,7 +472,9 @@ struct EastMoneyData {
 /// Fetch a CN A-share stock quote from East Money (东方财富).
 /// Symbol format: "sh600519" (Shanghai) or "sz000858" (Shenzhen).
 /// The symbol is normalised to lowercase automatically.
-pub async fn fetch_cn_quote(symbol: &str) -> Result<StockQuote, String> {
+/// Kept as a fallback implementation; not currently used in favour of Xueqiu.
+#[allow(dead_code)]
+async fn fetch_eastmoney_cn_quote(symbol: &str) -> Result<StockQuote, String> {
     let symbol = symbol.to_lowercase();
     let secid = to_eastmoney_secid(&symbol)?;
     let url = format!(
@@ -396,11 +573,21 @@ fn parse_eastmoney_quote(symbol: &str, resp: EastMoneyResponse) -> Result<StockQ
 pub async fn fetch_quotes_batch(
     symbols: Vec<(String, String)>,
 ) -> Result<Vec<StockQuote>, String> {
+    fetch_quotes_batch_with_providers(symbols, "xueqiu", "xueqiu").await
+}
+
+/// Batch fetch quotes using the specified providers for US and HK markets.
+/// CN always uses the default provider (Xueqiu).
+pub async fn fetch_quotes_batch_with_providers(
+    symbols: Vec<(String, String)>,
+    us_provider: &str,
+    hk_provider: &str,
+) -> Result<Vec<StockQuote>, String> {
     let mut quotes = Vec::new();
     for (symbol, market) in symbols {
         let result = match market.as_str() {
-            "US" => fetch_us_quote(&symbol).await,
-            "HK" => fetch_hk_quote(&symbol).await,
+            "US" => fetch_us_quote_with_provider(&symbol, us_provider).await,
+            "HK" => fetch_hk_quote_with_provider(&symbol, hk_provider).await,
             "CN" => fetch_cn_quote(&symbol).await,
             _ => Err(format!("Unknown market: {}", market)),
         };
@@ -700,5 +887,180 @@ mod tests {
         quote.current_price = 200.0;
         cache.set(quote);
         assert!((cache.get("AAPL").unwrap().current_price - 200.0).abs() < 0.001);
+    }
+
+    // ---- Xueqiu parser tests ----
+
+    fn make_xueqiu_response(
+        symbol: &str,
+        name: &str,
+        current: f64,
+        percent: f64,
+        chg: f64,
+        high: f64,
+        low: f64,
+        volume: u64,
+        last_close: f64,
+    ) -> XueqiuResponse {
+        XueqiuResponse {
+            data: Some(vec![XueqiuQuoteData {
+                symbol: Some(symbol.to_string()),
+                name: Some(name.to_string()),
+                current: Some(current),
+                percent: Some(percent),
+                chg: Some(chg),
+                high: Some(high),
+                low: Some(low),
+                volume: Some(volume),
+                last_close: Some(last_close),
+            }]),
+            error_code: Some(0),
+            error_description: None,
+        }
+    }
+
+    #[test]
+    fn test_parse_xueqiu_quote_valid_cn() {
+        let resp = make_xueqiu_response(
+            "SH600519", "贵州茅台", 1710.50, 1.21, 20.50, 1720.00, 1685.00, 12345, 1690.00,
+        );
+        let result = parse_xueqiu_quote("sh600519", "CN", resp);
+        assert!(result.is_ok(), "Expected Ok, got: {:?}", result);
+        let quote = result.unwrap();
+        assert_eq!(quote.symbol, "sh600519");
+        assert_eq!(quote.name, "贵州茅台");
+        assert_eq!(quote.market, "CN");
+        assert!((quote.current_price - 1710.50).abs() < 0.001);
+        assert!((quote.previous_close - 1690.00).abs() < 0.001);
+        assert!((quote.change - 20.50).abs() < 0.001);
+        assert!((quote.change_percent - 1.21).abs() < 0.001);
+        assert!((quote.high - 1720.00).abs() < 0.001);
+        assert!((quote.low - 1685.00).abs() < 0.001);
+        assert_eq!(quote.volume, 12345);
+    }
+
+    #[test]
+    fn test_parse_xueqiu_quote_valid_us() {
+        let resp = make_xueqiu_response(
+            "AAPL", "Apple Inc.", 195.50, 1.50, 2.89, 196.00, 193.00, 50000000, 192.61,
+        );
+        let result = parse_xueqiu_quote("AAPL", "US", resp);
+        assert!(result.is_ok());
+        let quote = result.unwrap();
+        assert_eq!(quote.symbol, "AAPL");
+        assert_eq!(quote.market, "US");
+        assert!((quote.current_price - 195.50).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_parse_xueqiu_quote_valid_hk() {
+        let resp = make_xueqiu_response(
+            "00700", "腾讯控股", 380.00, 2.15, 8.00, 385.00, 375.00, 20000000, 372.00,
+        );
+        let result = parse_xueqiu_quote("00700", "HK", resp);
+        assert!(result.is_ok());
+        let quote = result.unwrap();
+        assert_eq!(quote.symbol, "00700");
+        assert_eq!(quote.market, "HK");
+        assert!((quote.current_price - 380.00).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_parse_xueqiu_quote_no_data() {
+        let resp = XueqiuResponse {
+            data: None,
+            error_code: Some(0),
+            error_description: None,
+        };
+        let result = parse_xueqiu_quote("AAPL", "US", resp);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("No data from Xueqiu"));
+    }
+
+    #[test]
+    fn test_parse_xueqiu_quote_empty_data() {
+        let resp = XueqiuResponse {
+            data: Some(vec![]),
+            error_code: Some(0),
+            error_description: None,
+        };
+        let result = parse_xueqiu_quote("AAPL", "US", resp);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Empty data array"));
+    }
+
+    #[test]
+    fn test_parse_xueqiu_quote_error_code() {
+        let resp = XueqiuResponse {
+            data: None,
+            error_code: Some(400),
+            error_description: Some("Invalid symbol".to_string()),
+        };
+        let result = parse_xueqiu_quote("INVALID", "US", resp);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Xueqiu API error"));
+    }
+
+    #[test]
+    fn test_parse_xueqiu_quote_missing_price() {
+        let resp = XueqiuResponse {
+            data: Some(vec![XueqiuQuoteData {
+                symbol: Some("AAPL".to_string()),
+                name: Some("Apple Inc.".to_string()),
+                current: None,
+                percent: Some(1.5),
+                chg: Some(2.89),
+                high: Some(196.0),
+                low: Some(193.0),
+                volume: Some(50000000),
+                last_close: Some(192.61),
+            }]),
+            error_code: Some(0),
+            error_description: None,
+        };
+        let result = parse_xueqiu_quote("AAPL", "US", resp);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Missing current price"));
+    }
+
+    #[test]
+    fn test_parse_xueqiu_quote_fallback_change() {
+        // When chg/percent are None, change should be computed from prices
+        let resp = XueqiuResponse {
+            data: Some(vec![XueqiuQuoteData {
+                symbol: Some("AAPL".to_string()),
+                name: Some("Apple Inc.".to_string()),
+                current: Some(1100.0),
+                percent: None,
+                chg: None,
+                high: Some(1200.0),
+                low: Some(950.0),
+                volume: Some(99999),
+                last_close: Some(1000.0),
+            }]),
+            error_code: Some(0),
+            error_description: None,
+        };
+        let result = parse_xueqiu_quote("AAPL", "US", resp);
+        assert!(result.is_ok());
+        let quote = result.unwrap();
+        assert!((quote.change - 100.0).abs() < 0.001);
+        assert!((quote.change_percent - 10.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_to_xueqiu_symbol_cn() {
+        assert_eq!(to_xueqiu_symbol("sh600519", "CN"), "SH600519");
+        assert_eq!(to_xueqiu_symbol("sz000858", "CN"), "SZ000858");
+    }
+
+    #[test]
+    fn test_to_xueqiu_symbol_us() {
+        assert_eq!(to_xueqiu_symbol("AAPL", "US"), "AAPL");
+    }
+
+    #[test]
+    fn test_to_xueqiu_symbol_hk() {
+        assert_eq!(to_xueqiu_symbol("00700", "HK"), "00700");
     }
 }

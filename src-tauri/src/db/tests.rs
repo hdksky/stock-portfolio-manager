@@ -172,4 +172,68 @@ mod tests {
             .unwrap();
         assert!((market_value - 17500.0).abs() < 0.001);
     }
+
+    #[test]
+    fn test_quote_provider_config_table_exists() {
+        let db = create_test_db();
+        let conn = db.conn.lock().unwrap();
+        let count: i32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='quote_provider_config'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_quote_provider_config_default() {
+        let db = create_test_db();
+        let config = crate::services::quote_provider_service::get_quote_provider_config(&db).unwrap();
+        assert_eq!(config.us_provider, "xueqiu");
+        assert_eq!(config.hk_provider, "xueqiu");
+        assert_eq!(config.cn_provider, "xueqiu");
+    }
+
+    #[test]
+    fn test_quote_provider_config_update_and_get() {
+        let db = create_test_db();
+        let config = crate::models::quote_provider::QuoteProviderConfig {
+            us_provider: "yahoo".to_string(),
+            hk_provider: "yahoo".to_string(),
+            cn_provider: "xueqiu".to_string(),
+        };
+        let result = crate::services::quote_provider_service::update_quote_provider_config(&db, &config);
+        assert!(result.is_ok());
+
+        let loaded = crate::services::quote_provider_service::get_quote_provider_config(&db).unwrap();
+        assert_eq!(loaded.us_provider, "yahoo");
+        assert_eq!(loaded.hk_provider, "yahoo");
+        assert_eq!(loaded.cn_provider, "xueqiu");
+    }
+
+    #[test]
+    fn test_quote_provider_config_invalid_us_provider() {
+        let db = create_test_db();
+        let config = crate::models::quote_provider::QuoteProviderConfig {
+            us_provider: "invalid".to_string(),
+            hk_provider: "xueqiu".to_string(),
+            cn_provider: "xueqiu".to_string(),
+        };
+        let result = crate::services::quote_provider_service::update_quote_provider_config(&db, &config);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_quote_provider_config_invalid_cn_provider() {
+        let db = create_test_db();
+        let config = crate::models::quote_provider::QuoteProviderConfig {
+            us_provider: "xueqiu".to_string(),
+            hk_provider: "xueqiu".to_string(),
+            cn_provider: "yahoo".to_string(),
+        };
+        let result = crate::services::quote_provider_service::update_quote_provider_config(&db, &config);
+        assert!(result.is_err());
+    }
 }

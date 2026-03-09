@@ -8,6 +8,7 @@ pub mod holdings;
 pub mod import_export;
 pub mod performance;
 pub mod quarterly;
+pub mod quote_provider;
 pub mod quotes;
 pub mod review;
 pub mod snapshots;

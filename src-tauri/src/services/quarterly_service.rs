@@ -5,7 +5,8 @@ use crate::models::quarterly::{
     QuarterlySnapshot, QuarterlySnapshotDetail, QuarterlyTrends,
 };
 use crate::services::exchange_rate_service::{convert_currency, get_cached_rates, ExchangeRateCache};
-use crate::services::quote_service::{fetch_quotes_batch_cached, QuoteCache};
+use crate::services::quote_service::{fetch_quotes_batch_cached_with_providers, QuoteCache};
+use crate::services::quote_provider_service;
 use chrono::{Datelike, NaiveDate, Utc};
 use std::collections::HashMap;
 
@@ -355,7 +356,10 @@ async fn get_prices_for_date(
             })
             .collect();
         if !sym_market_pairs.is_empty() {
-            let quotes = fetch_quotes_batch_cached(quote_cache, sym_market_pairs).await?;
+            let quotes = {
+                let config = quote_provider_service::get_quote_provider_config(db)?;
+                fetch_quotes_batch_cached_with_providers(quote_cache, sym_market_pairs, &config.us_provider, &config.hk_provider).await?
+            };
             for q in quotes {
                 price_map.insert(q.symbol, q.current_price);
             }

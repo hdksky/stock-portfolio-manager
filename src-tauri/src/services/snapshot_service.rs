@@ -1,7 +1,8 @@
 use crate::db::Database;
 use crate::models::{DailyHoldingSnapshot, DailyPortfolioValue};
 use crate::services::exchange_rate_service::ExchangeRateCache;
-use crate::services::quote_service::{fetch_quotes_batch_cached, QuoteCache};
+use crate::services::quote_service::{fetch_quotes_batch_cached_with_providers, QuoteCache};
+use crate::services::quote_provider_service;
 use chrono::NaiveDate;
 
 /// Take a daily portfolio snapshot for the given date.
@@ -69,7 +70,10 @@ pub async fn take_daily_snapshot(
         .iter()
         .map(|h| (h.symbol.clone(), h.market.clone()))
         .collect();
-    let quotes = fetch_quotes_batch_cached(quote_cache, symbols).await?;
+    let quotes = {
+        let config = quote_provider_service::get_quote_provider_config(db)?;
+        fetch_quotes_batch_cached_with_providers(quote_cache, symbols, &config.us_provider, &config.hk_provider).await?
+    };
     let quote_map: std::collections::HashMap<String, f64> = quotes
         .iter()
         .map(|q| (q.symbol.clone(), q.current_price))
