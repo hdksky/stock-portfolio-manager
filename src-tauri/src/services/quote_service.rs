@@ -335,7 +335,7 @@ async fn fetch_eastmoney_cn_quote(symbol: &str) -> Result<StockQuote, String> {
     );
 
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(15))
         .build()
         .map_err(|e| e.to_string())?;
 
