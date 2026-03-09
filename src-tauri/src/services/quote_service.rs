@@ -550,10 +550,9 @@ pub async fn fetch_stock_history_yahoo(
     let mut result: Vec<(chrono::NaiveDate, f64)> = Vec::new();
     for (ts, cl) in timestamps.iter().zip(closes.iter()) {
         if let (Some(ts_i), Some(cl_f)) = (ts.as_i64(), cl.as_f64()) {
-            let date = chrono::DateTime::from_timestamp(ts_i, 0)
-                .unwrap_or_default()
-                .date_naive();
-            result.push((date, cl_f));
+            if let Some(dt) = chrono::DateTime::from_timestamp(ts_i, 0) {
+                result.push((dt.date_naive(), cl_f));
+            }
         }
     }
     Ok(result)

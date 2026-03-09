@@ -270,6 +270,11 @@ pub fn get_daily_values(
 /// Fetches historical closing prices from Yahoo Finance, calculates portfolio
 /// values for every missing weekday, and stores them in the database.
 /// Returns the number of snapshots created.
+///
+/// **Note:** This uses *current* exchange rates for all historical dates and
+/// *current* holdings composition.  For portfolios with significant
+/// multi-currency exposure or frequently changing compositions, the
+/// back-filled values are approximate.
 pub async fn backfill_snapshots(
     db: &Database,
     cache: &ExchangeRateCache,
@@ -423,7 +428,13 @@ pub async fn backfill_snapshots(
                 .get(&holding.symbol)
                 .and_then(|m| m.get(date))
                 .copied()
-                .unwrap_or(0.0);
+                .unwrap_or_else(|| {
+                    eprintln!(
+                        "Warning: no historical price for {} ({}) on {}",
+                        holding.symbol, holding.market, date_str
+                    );
+                    0.0
+                });
 
             if close_price > 0.0 {
                 has_any_price = true;
