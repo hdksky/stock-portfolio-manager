@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Typography,
   Button,
@@ -15,6 +15,7 @@ import {
   Tooltip,
   Switch,
   Spin,
+  AutoComplete,
 } from "antd";
 import { PlusOutlined, ReloadOutlined, SyncOutlined, FilterOutlined } from "@ant-design/icons";
 import { invoke } from "@tauri-apps/api/core";
@@ -62,6 +63,32 @@ export default function HoldingsPage() {
   const [fetchingName, setFetchingName] = useState(false);
   const [filterAccountId, setFilterAccountId] = useState<string | undefined>(undefined);
   const [filterMarket, setFilterMarket] = useState<Market | undefined>(undefined);
+  const [symbolSearch, setSymbolSearch] = useState("");
+
+  // Derive unique stock symbols from existing holdings for autocomplete
+  const symbolOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const options: { symbol: string; name: string; market: Market; currency: Currency }[] = [];
+    for (const h of holdings) {
+      if (!seen.has(h.symbol)) {
+        seen.add(h.symbol);
+        options.push({ symbol: h.symbol, name: h.name, market: h.market, currency: h.currency });
+      }
+    }
+    return options;
+  }, [holdings]);
+
+  // Filter autocomplete options: show only when input >= 3 characters
+  const filteredSymbolOptions = useMemo(() => {
+    if (symbolSearch.length < 3) return [];
+    const search = symbolSearch.toLowerCase();
+    return symbolOptions
+      .filter((o) => o.symbol.toLowerCase().includes(search))
+      .map((o) => ({
+        value: o.symbol,
+        label: `${o.symbol} - ${o.name}`,
+      }));
+  }, [symbolSearch, symbolOptions]);
 
   const marketToCurrency: Record<Market, Currency> = {
     US: "USD",
@@ -111,10 +138,25 @@ export default function HoldingsPage() {
   );
 
   const handleSymbolBlur = useCallback(
-    (e: React.FocusEvent<HTMLInputElement>) => {
-      fetchStockName(e.target.value);
+    () => {
+      const symbol = form.getFieldValue("symbol");
+      if (symbol) fetchStockName(symbol);
     },
-    [fetchStockName],
+    [fetchStockName, form],
+  );
+
+  const handleSymbolSelect = useCallback(
+    (symbol: string) => {
+      const match = symbolOptions.find((o) => o.symbol === symbol);
+      if (match) {
+        form.setFieldsValue({
+          name: match.name,
+          market: match.market,
+          currency: match.currency,
+        });
+      }
+    },
+    [symbolOptions, form],
   );
 
   useEffect(() => {
@@ -151,6 +193,7 @@ export default function HoldingsPage() {
       setModalOpen(false);
       form.resetFields();
       setEditingHolding(null);
+      setSymbolSearch("");
     } catch (err) {
       message.error(`操作失败: ${err}`);
     }
@@ -429,6 +472,7 @@ export default function HoldingsPage() {
         onCancel={() => {
           setModalOpen(false);
           setEditingHolding(null);
+          setSymbolSearch("");
           form.resetFields();
         }}
         okText="确认"
@@ -454,7 +498,13 @@ export default function HoldingsPage() {
             label="股票代码"
             rules={[{ required: true, message: "请输入股票代码" }]}
           >
-            <Input placeholder="如：AAPL, sh600519, 0700.HK" onBlur={handleSymbolBlur} />
+            <AutoComplete
+              options={filteredSymbolOptions}
+              onSearch={setSymbolSearch}
+              onSelect={handleSymbolSelect}
+              onBlur={handleSymbolBlur}
+              placeholder="如：AAPL, sh600519, 0700.HK"
+            />
           </Form.Item>
           <Form.Item
             name="name"
