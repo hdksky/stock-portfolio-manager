@@ -11,6 +11,12 @@ interface Props {
   onAccountChange: (id: string) => void;
 }
 
+const marketCurrency: Record<string, { code: string; symbol: string }> = {
+  US: { code: "USD", symbol: "$" },
+  CN: { code: "CNY", symbol: "¥" },
+  HK: { code: "HKD", symbol: "HK$" },
+};
+
 function pnlColor(pnl: number) {
   return pnl >= 0 ? "#22C55E" : "#EF4444";
 }
@@ -30,6 +36,8 @@ export default function AccountTab({ selectedAccountId, onAccountChange }: Props
   }, [selectedAccountId, fetchAccountStats]);
 
   const stats: AccountStatistics | undefined = accountStats[selectedAccountId];
+  const currencyCode = stats ? (marketCurrency[stats.market]?.code ?? "USD") : "USD";
+  const currencySymbol = stats ? (marketCurrency[stats.market]?.symbol ?? "$") : "$";
 
   return (
     <div>
@@ -61,21 +69,21 @@ export default function AccountTab({ selectedAccountId, onAccountChange }: Props
           <Row gutter={[16, 16]} className="mb-4">
             <Col xs={24} sm={8}>
               <Card>
-                <Statistic title="账户总市值 (USD)" value={stats.total_market_value.toFixed(2)} prefix="$" />
+                <Statistic title={`账户总市值 (${currencyCode})`} value={stats.total_market_value.toFixed(2)} prefix={currencySymbol} />
               </Card>
             </Col>
             <Col xs={24} sm={8}>
               <Card>
-                <Statistic title="账户总成本 (USD)" value={stats.total_cost.toFixed(2)} prefix="$" />
+                <Statistic title={`账户总成本 (${currencyCode})`} value={stats.total_cost.toFixed(2)} prefix={currencySymbol} />
               </Card>
             </Col>
             <Col xs={24} sm={8}>
               <Card>
                 <Statistic
-                  title="账户总盈亏 (USD)"
+                  title={`账户总盈亏 (${currencyCode})`}
                   value={`${stats.total_pnl >= 0 ? "+" : ""}${stats.total_pnl.toFixed(2)}`}
                   valueStyle={{ color: pnlColor(stats.total_pnl) }}
-                  prefix="$"
+                  prefix={currencySymbol}
                   suffix={`(${stats.total_pnl >= 0 ? "+" : ""}${stats.total_pnl_percent.toFixed(2)}%)`}
                 />
               </Card>
