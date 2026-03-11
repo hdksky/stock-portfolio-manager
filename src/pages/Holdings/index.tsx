@@ -16,7 +16,7 @@ import {
   Switch,
   Spin,
 } from "antd";
-import { PlusOutlined, ReloadOutlined, SyncOutlined } from "@ant-design/icons";
+import { PlusOutlined, ReloadOutlined, SyncOutlined, FilterOutlined } from "@ant-design/icons";
 import { invoke } from "@tauri-apps/api/core";
 import { useHoldingStore } from "../../stores/holdingStore";
 import { useAccountStore } from "../../stores/accountStore";
@@ -60,6 +60,8 @@ export default function HoldingsPage() {
   const [showRealtime, setShowRealtime] = useState(true);
   const [form] = Form.useForm();
   const [fetchingName, setFetchingName] = useState(false);
+  const [filterAccountId, setFilterAccountId] = useState<string | undefined>(undefined);
+  const [filterMarket, setFilterMarket] = useState<Market | undefined>(undefined);
 
   const marketToCurrency: Record<Market, Currency> = {
     US: "USD",
@@ -183,13 +185,20 @@ export default function HoldingsPage() {
 
   // Merge holdings with realtime quotes
   const quoteMap = Object.fromEntries(holdingQuotes.map((h) => [h.id, h as HoldingWithQuote]));
-  const displayData: HoldingWithQuote[] = holdings.map((h) => quoteMap[h.id] ?? {
+  const allDisplayData: HoldingWithQuote[] = holdings.map((h) => quoteMap[h.id] ?? {
     ...h,
     quote: null,
     market_value: null,
     total_cost: null,
     unrealized_pnl: null,
     unrealized_pnl_percent: null,
+  });
+
+  // Apply filters
+  const displayData = allDisplayData.filter((h) => {
+    if (filterAccountId && h.account_id !== filterAccountId) return false;
+    if (filterMarket && h.market !== filterMarket) return false;
+    return true;
   });
 
   const staticColumns = [
@@ -346,11 +355,58 @@ export default function HoldingsPage() {
             onClick={() => {
               setEditingHolding(null);
               form.resetFields();
+              // Pre-populate form fields based on active filters
+              if (filterAccountId) {
+                form.setFieldsValue({ accountId: filterAccountId });
+                handleAccountChange(filterAccountId);
+              }
+              if (filterMarket) {
+                form.setFieldsValue({
+                  market: filterMarket,
+                  currency: marketToCurrency[filterMarket],
+                });
+              }
               setModalOpen(true);
             }}
           >
             新增持仓
           </Button>
+        </Space>
+      </div>
+
+      <div className="mb-4">
+        <Space size="middle">
+          <Space>
+            <FilterOutlined />
+            <Text type="secondary">按账户:</Text>
+            <Select
+              value={filterAccountId}
+              onChange={setFilterAccountId}
+              placeholder="全部账户"
+              allowClear
+              style={{ width: 180 }}
+            >
+              {accounts.map((a) => (
+                <Select.Option key={a.id} value={a.id}>
+                  [{a.market}] {a.name}
+                </Select.Option>
+              ))}
+            </Select>
+          </Space>
+          <Space>
+            <Text type="secondary">按市场:</Text>
+            <Select
+              value={filterMarket}
+              onChange={setFilterMarket}
+              placeholder="全部市场"
+              allowClear
+              style={{ width: 140 }}
+            >
+              <Select.Option value="US">🇺🇸 美股</Select.Option>
+              <Select.Option value="CN">🇨🇳 A股</Select.Option>
+              <Select.Option value="HK">🇭🇰 港股</Select.Option>
+            </Select>
+          </Space>
         </Space>
       </div>
 
