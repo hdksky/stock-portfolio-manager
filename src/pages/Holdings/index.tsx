@@ -245,7 +245,7 @@ export default function HoldingsPage() {
       dataIndex: "avg_cost",
       key: "avg_cost",
       render: (v: number, record: HoldingWithQuote) =>
-        `${record.currency} ${v.toFixed(2)}`,
+        `${record.currency} ${v.toFixed(3)}`,
     },
   ];
 
@@ -488,7 +488,7 @@ export default function HoldingsPage() {
             label="持仓股数"
             rules={[{ required: true, message: "请输入持仓股数" }]}
           >
-            <InputNumber min={0} precision={2} style={{ width: "100%" }} placeholder="持有股数" />
+            <InputNumber min={0} precision={0} style={{ width: "100%" }} placeholder="持有股数" />
           </Form.Item>
           <Form.Item
             name="avgCost"

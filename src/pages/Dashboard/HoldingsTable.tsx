@@ -86,7 +86,10 @@ export default function HoldingsTable({ holdings, loading }: Props) {
       key: "avg_cost",
       sorter: (a, b) => a.avg_cost - b.avg_cost,
       render: (price: number, record: HoldingDetail) =>
-        fmtMoney(price, record.currency),
+        `${currencySymbol[record.currency] ?? ""}${price.toLocaleString("en-US", {
+          minimumFractionDigits: 3,
+          maximumFractionDigits: 3,
+        })}`,
       align: "right",
       width: 110,
     },
