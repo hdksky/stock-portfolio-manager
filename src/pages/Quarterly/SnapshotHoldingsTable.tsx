@@ -77,7 +77,7 @@ export default function SnapshotHoldingsTable({ holdings, snapshotId, loading }:
       title: "均成本",
       dataIndex: "avg_cost",
       key: "avg_cost",
-      render: (v: number) => fmt(v),
+      render: (v: number) => v.toLocaleString("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 3 }),
     },
     {
       title: "收盘价",
