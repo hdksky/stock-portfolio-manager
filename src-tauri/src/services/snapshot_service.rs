@@ -375,12 +375,25 @@ pub async fn backfill_snapshots(
 
     // 3. Fetch historical prices for each holding from Yahoo Finance
     // Build a map: symbol -> { date -> close_price }
+    // Cash symbols skip API calls – their price is always 1.0.
     let mut history_map: std::collections::HashMap<
         String,
         std::collections::HashMap<NaiveDate, f64>,
     > = std::collections::HashMap::new();
 
     for holding in &holdings {
+        // Cash holdings have a constant price of 1.0 – no history fetch needed.
+        if crate::services::quote_service::is_cash_symbol(&holding.symbol) {
+            // Populate every missing date with price = 1.0 so forward-fill works
+            let mut cash_prices =
+                std::collections::HashMap::with_capacity(missing_dates.len());
+            for d in &missing_dates {
+                cash_prices.insert(*d, 1.0);
+            }
+            history_map.insert(holding.symbol.clone(), cash_prices);
+            continue;
+        }
+
         match fetch_stock_history_yahoo(
             &holding.symbol,
             &holding.market,
