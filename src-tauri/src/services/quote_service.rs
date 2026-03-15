@@ -127,6 +127,17 @@ impl QuoteCache {
     }
 }
 
+/// Deduplicate a list of (symbol, market) pairs, keeping only the first
+/// occurrence of each symbol.  This avoids redundant API calls when the same
+/// stock is held in multiple accounts.
+fn deduplicate_symbols(symbols: Vec<(String, String)>) -> Vec<(String, String)> {
+    let mut seen = std::collections::HashSet::new();
+    symbols
+        .into_iter()
+        .filter(|(symbol, _)| seen.insert(symbol.clone()))
+        .collect()
+}
+
 /// Batch fetch quotes using the cache. Only fetches symbols that are stale or
 /// missing from the cache, and updates the cache with fresh results.
 /// Falls back to stale cache entries on network errors for individual symbols.
@@ -147,11 +158,7 @@ pub async fn fetch_quotes_batch_cached_with_providers(
     hk_provider: &str,
 ) -> Result<Vec<StockQuote>, String> {
     // Deduplicate symbols so we only look up / fetch each symbol once.
-    let mut seen = std::collections::HashSet::new();
-    let unique_symbols: Vec<(String, String)> = symbols
-        .into_iter()
-        .filter(|(symbol, _)| seen.insert(symbol.clone()))
-        .collect();
+    let unique_symbols = deduplicate_symbols(symbols);
 
     let (mut result, missing) = cache.get_batch(&unique_symbols);
 
@@ -588,11 +595,7 @@ pub async fn fetch_quotes_batch_with_providers(
 ) -> Result<Vec<StockQuote>, String> {
     // Deduplicate symbols so we only fetch each symbol once,
     // even if it appears in multiple accounts.
-    let mut seen = std::collections::HashSet::new();
-    let unique_symbols: Vec<(String, String)> = symbols
-        .into_iter()
-        .filter(|(symbol, _)| seen.insert(symbol.clone()))
-        .collect();
+    let unique_symbols = deduplicate_symbols(symbols);
 
     let mut quotes = Vec::new();
     for (symbol, market) in unique_symbols {
