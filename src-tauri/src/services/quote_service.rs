@@ -2,7 +2,7 @@ use crate::models::StockQuote;
 use chrono::Utc;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 const QUOTE_CACHE_TTL_SECS: u64 = 60; // 60-second cache
@@ -354,6 +354,20 @@ pub async fn fetch_cn_quote(symbol: &str) -> Result<StockQuote, String> {
 // East Money (东方财富) API
 // ---------------------------------------------------------------------------
 
+/// Return a shared `reqwest::Client` for all East Money API requests.
+/// The client is created once and reused across all calls so that the
+/// underlying TCP connection(s) to `push2.eastmoney.com` are pooled and
+/// reused, reducing latency and server load.
+fn eastmoney_client() -> &'static reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(Duration::from_secs(15))
+            .build()
+            .expect("failed to build East Money HTTP client")
+    })
+}
+
 /// East Money API response for a single stock quote.
 #[derive(Debug, Deserialize)]
 struct EastMoneyResponse {
@@ -397,12 +411,7 @@ async fn fetch_eastmoney_cn_quote(symbol: &str) -> Result<StockQuote, String> {
         secid
     );
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let response = client
+    let response = eastmoney_client()
         .get(&url)
         .header("User-Agent", "Mozilla/5.0")
         .send()
@@ -434,12 +443,7 @@ async fn fetch_eastmoney_us_quote(symbol: &str) -> Result<StockQuote, String> {
         secid
     );
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let response = client
+    let response = eastmoney_client()
         .get(&url)
         .header("User-Agent", "Mozilla/5.0")
         .send()
@@ -471,12 +475,7 @@ async fn fetch_eastmoney_hk_quote(symbol: &str) -> Result<StockQuote, String> {
         secid
     );
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let response = client
+    let response = eastmoney_client()
         .get(&url)
         .header("User-Agent", "Mozilla/5.0")
         .send()
@@ -1276,5 +1275,12 @@ mod tests {
                 println!("⚠️ HK East Money quote failed (network issue in CI): {}", e);
             }
         }
+    }
+
+    #[test]
+    fn test_eastmoney_client_returns_same_instance() {
+        let c1 = eastmoney_client() as *const reqwest::Client;
+        let c2 = eastmoney_client() as *const reqwest::Client;
+        assert!(std::ptr::eq(c1, c2), "eastmoney_client() should return the same instance");
     }
 }
