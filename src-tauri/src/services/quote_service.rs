@@ -376,7 +376,7 @@ fn build_eastmoney_client() -> reqwest::Client {
 fn eastmoney_client() -> reqwest::Client {
     let mut guard = EASTMONEY_CLIENT
         .lock()
-        .expect("eastmoney client lock poisoned");
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     guard.get_or_insert_with(build_eastmoney_client).clone()
 }
 
@@ -385,7 +385,7 @@ fn eastmoney_client() -> reqwest::Client {
 fn reset_eastmoney_client() {
     let mut guard = EASTMONEY_CLIENT
         .lock()
-        .expect("eastmoney client lock poisoned");
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     *guard = None;
 }
 
