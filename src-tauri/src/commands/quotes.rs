@@ -9,15 +9,17 @@ pub async fn get_real_time_quotes(
     db: State<'_, Database>,
     quote_cache: State<'_, QuoteCache>,
     symbols: Vec<(String, String)>,
+    force_refresh: Option<bool>,
 ) -> Result<Vec<StockQuote>, String> {
     let config = quote_provider_service::get_quote_provider_config(&db)?;
-    fetch_quotes_batch_cached_with_providers(&quote_cache, symbols, &config.us_provider, &config.hk_provider).await
+    fetch_quotes_batch_cached_with_providers(&quote_cache, symbols, &config.us_provider, &config.hk_provider, force_refresh.unwrap_or(false)).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
 pub async fn get_holding_quotes(
     db: State<'_, Database>,
     quote_cache: State<'_, QuoteCache>,
+    force_refresh: Option<bool>,
 ) -> Result<Vec<HoldingWithQuote>, String> {
     let config = quote_provider_service::get_quote_provider_config(&db)?;
     // Load holdings from DB (synchronous)
@@ -57,7 +59,7 @@ pub async fn get_holding_quotes(
         .iter()
         .map(|h| (h.symbol.clone(), h.market.clone()))
         .collect();
-    let quotes = fetch_quotes_batch_cached_with_providers(&quote_cache, symbols, &config.us_provider, &config.hk_provider).await?;
+    let quotes = fetch_quotes_batch_cached_with_providers(&quote_cache, symbols, &config.us_provider, &config.hk_provider, force_refresh.unwrap_or(false)).await?;
     let quote_map: std::collections::HashMap<String, StockQuote> = quotes
         .into_iter()
         .map(|q| (q.symbol.clone(), q))

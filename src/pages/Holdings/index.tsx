@@ -448,7 +448,7 @@ export default function HoldingsPage() {
             <Tooltip title={lastUpdatedAt ? `上次更新: ${dayjs(lastUpdatedAt).format("HH:mm:ss")}` : "点击刷新"}>
               <Button
                 icon={quotesLoading ? <SyncOutlined spin /> : <ReloadOutlined />}
-                onClick={fetchHoldingQuotes}
+                onClick={() => fetchHoldingQuotes(true)}
                 size="small"
                 disabled={quotesLoading}
               >
