@@ -1,4 +1,5 @@
 use crate::db::Database;
+use crate::services::http_client;
 use chrono::Datelike;
 
 const RISK_FREE_RATE: f64 = 0.045; // 4.5% US 10-year treasury default
@@ -869,14 +870,8 @@ pub async fn fetch_benchmark_history(
         symbol, start_ts, end_ts
     );
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let resp = client
+    let resp = http_client::general_client()
         .get(&url)
-        .header("User-Agent", "Mozilla/5.0")
         .send()
         .await
         .map_err(|e| e.to_string())?;
