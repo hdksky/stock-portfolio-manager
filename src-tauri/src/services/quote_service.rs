@@ -1,5 +1,6 @@
 use crate::models::StockQuote;
 use chrono::Utc;
+use serde::de::Deserializer;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -440,6 +441,35 @@ async fn send_eastmoney_request(url: &str, symbol: &str) -> Result<reqwest::Resp
     Err(last_err)
 }
 
+/// Deserialize a JSON value that may be a number or a non-numeric string
+/// (e.g. `"-"`) into `Option<f64>`. The East Money API uses `"-"` to
+/// represent missing data for numeric fields even with `fltt=2`.
+fn deserialize_maybe_f64<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    match &value {
+        serde_json::Value::Number(n) => Ok(n.as_f64()),
+        serde_json::Value::Null => Ok(None),
+        _ => Ok(None), // "-" or any other non-numeric value → None
+    }
+}
+
+/// Deserialize a JSON value that may be a number or a non-numeric string
+/// into `Option<u64>`. Same rationale as [`deserialize_maybe_f64`].
+fn deserialize_maybe_u64<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    match &value {
+        serde_json::Value::Number(n) => Ok(n.as_u64()),
+        serde_json::Value::Null => Ok(None),
+        _ => Ok(None),
+    }
+}
+
 /// East Money API response for a single stock quote.
 #[derive(Debug, Deserialize)]
 struct EastMoneyResponse {
@@ -449,26 +479,35 @@ struct EastMoneyResponse {
 
 /// Inner data of an East Money quote response.
 /// Field names follow the East Money API convention (f43, f44, …).
-/// With `fltt=2` the numeric fields are returned as floats/integers directly.
+/// With `fltt=2` the numeric fields are returned as floats/integers directly,
+/// but missing data may still be represented as `"-"` (a string dash).
+/// Custom deserializers handle both cases gracefully.
 #[derive(Debug, Deserialize)]
 struct EastMoneyData {
     /// Current price
+    #[serde(default, deserialize_with = "deserialize_maybe_f64")]
     f43: Option<f64>,
     /// Day high
+    #[serde(default, deserialize_with = "deserialize_maybe_f64")]
     f44: Option<f64>,
     /// Day low
+    #[serde(default, deserialize_with = "deserialize_maybe_f64")]
     f45: Option<f64>,
     /// Volume (lots / 手)
+    #[serde(default, deserialize_with = "deserialize_maybe_u64")]
     f47: Option<u64>,
     /// Stock code (e.g. "600519")
     f57: Option<String>,
     /// Stock name (e.g. "贵州茅台")
     f58: Option<String>,
     /// Previous close
+    #[serde(default, deserialize_with = "deserialize_maybe_f64")]
     f60: Option<f64>,
     /// Change amount
+    #[serde(default, deserialize_with = "deserialize_maybe_f64")]
     f169: Option<f64>,
     /// Change percentage
+    #[serde(default, deserialize_with = "deserialize_maybe_f64")]
     f170: Option<f64>,
 }
 
@@ -493,10 +532,18 @@ async fn fetch_eastmoney_cn_quote(symbol: &str) -> Result<StockQuote, String> {
         ));
     }
 
-    let resp: EastMoneyResponse = response
-        .json()
+    let body = response
+        .text()
         .await
-        .map_err(|e| format!("Failed to parse East Money response for {}: {}", symbol, e))?;
+        .map_err(|e| format!("Failed to read East Money response body for {}: {}", symbol, e))?;
+
+    let resp: EastMoneyResponse = serde_json::from_str(&body).map_err(|e| {
+        let preview: String = body.chars().take(200).collect();
+        format!(
+            "Failed to parse East Money response for {}: {}. Response preview: {}",
+            symbol, e, preview
+        )
+    })?;
 
     parse_eastmoney_quote(&symbol, "CN", resp)
 }
@@ -520,10 +567,18 @@ async fn fetch_eastmoney_us_quote(symbol: &str) -> Result<StockQuote, String> {
         ));
     }
 
-    let resp: EastMoneyResponse = response
-        .json()
+    let body = response
+        .text()
         .await
-        .map_err(|e| format!("Failed to parse East Money response for {}: {}", symbol, e))?;
+        .map_err(|e| format!("Failed to read East Money response body for {}: {}", symbol, e))?;
+
+    let resp: EastMoneyResponse = serde_json::from_str(&body).map_err(|e| {
+        let preview: String = body.chars().take(200).collect();
+        format!(
+            "Failed to parse East Money response for {}: {}. Response preview: {}",
+            symbol, e, preview
+        )
+    })?;
 
     parse_eastmoney_quote(symbol, "US", resp)
 }
@@ -547,10 +602,18 @@ async fn fetch_eastmoney_hk_quote(symbol: &str) -> Result<StockQuote, String> {
         ));
     }
 
-    let resp: EastMoneyResponse = response
-        .json()
+    let body = response
+        .text()
         .await
-        .map_err(|e| format!("Failed to parse East Money response for {}: {}", symbol, e))?;
+        .map_err(|e| format!("Failed to read East Money response body for {}: {}", symbol, e))?;
+
+    let resp: EastMoneyResponse = serde_json::from_str(&body).map_err(|e| {
+        let preview: String = body.chars().take(200).collect();
+        format!(
+            "Failed to parse East Money response for {}: {}. Response preview: {}",
+            symbol, e, preview
+        )
+    })?;
 
     parse_eastmoney_quote(symbol, "HK", resp)
 }
@@ -1047,6 +1110,148 @@ mod tests {
         let quote = result.unwrap();
         assert!((quote.change - 100.0).abs() < 0.001);
         assert!((quote.change_percent - 10.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_eastmoney_data_deserialize_dash_values() {
+        // The East Money API returns "-" for unavailable numeric fields.
+        let json = r#"{
+            "rc": 0,
+            "data": {
+                "f43": "-",
+                "f44": "-",
+                "f45": "-",
+                "f47": "-",
+                "f57": "600519",
+                "f58": "贵州茅台",
+                "f60": "-",
+                "f169": "-",
+                "f170": "-"
+            }
+        }"#;
+        let resp: EastMoneyResponse = serde_json::from_str(json).expect("should parse");
+        assert!(resp.data.is_some());
+        let data = resp.data.unwrap();
+        assert_eq!(data.f43, None);
+        assert_eq!(data.f44, None);
+        assert_eq!(data.f45, None);
+        assert_eq!(data.f47, None);
+        assert_eq!(data.f57, Some("600519".to_string()));
+        assert_eq!(data.f58, Some("贵州茅台".to_string()));
+        assert_eq!(data.f60, None);
+        assert_eq!(data.f169, None);
+        assert_eq!(data.f170, None);
+    }
+
+    #[test]
+    fn test_eastmoney_data_deserialize_numeric_values() {
+        // Normal case: all numeric fields are numbers.
+        let json = r#"{
+            "rc": 0,
+            "data": {
+                "f43": 1710.50,
+                "f44": 1720.00,
+                "f45": 1685.00,
+                "f47": 12345,
+                "f57": "600519",
+                "f58": "贵州茅台",
+                "f60": 1690.00,
+                "f169": 20.50,
+                "f170": 1.21
+            }
+        }"#;
+        let resp: EastMoneyResponse = serde_json::from_str(json).expect("should parse");
+        let data = resp.data.unwrap();
+        assert!((data.f43.unwrap() - 1710.50).abs() < 0.001);
+        assert_eq!(data.f47.unwrap(), 12345);
+    }
+
+    #[test]
+    fn test_eastmoney_data_deserialize_mixed_values() {
+        // Some fields are numbers, others are "-".
+        let json = r#"{
+            "rc": 0,
+            "data": {
+                "f43": 1710.50,
+                "f44": "-",
+                "f45": "-",
+                "f47": 0,
+                "f57": "600519",
+                "f58": "贵州茅台",
+                "f60": 1690.00,
+                "f169": "-",
+                "f170": "-"
+            }
+        }"#;
+        let resp: EastMoneyResponse = serde_json::from_str(json).expect("should parse");
+        let data = resp.data.unwrap();
+        assert!((data.f43.unwrap() - 1710.50).abs() < 0.001);
+        assert_eq!(data.f44, None);
+        assert_eq!(data.f45, None);
+        assert_eq!(data.f47, Some(0));
+        assert!((data.f60.unwrap() - 1690.00).abs() < 0.001);
+        assert_eq!(data.f169, None);
+        assert_eq!(data.f170, None);
+    }
+
+    #[test]
+    fn test_eastmoney_data_deserialize_integer_prices() {
+        // f43 may be an integer (no decimal) when the price is round.
+        let json = r#"{
+            "rc": 0,
+            "data": {
+                "f43": 1700,
+                "f44": 1720,
+                "f45": 1685,
+                "f47": 12345,
+                "f57": "600519",
+                "f58": "贵州茅台",
+                "f60": 1690,
+                "f169": 10,
+                "f170": 0
+            }
+        }"#;
+        let resp: EastMoneyResponse = serde_json::from_str(json).expect("should parse");
+        let data = resp.data.unwrap();
+        assert!((data.f43.unwrap() - 1700.0).abs() < 0.001);
+        assert!((data.f60.unwrap() - 1690.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_eastmoney_data_deserialize_null_data() {
+        let json = r#"{"rc": 0, "data": null}"#;
+        let resp: EastMoneyResponse = serde_json::from_str(json).expect("should parse");
+        assert!(resp.data.is_none());
+    }
+
+    #[test]
+    fn test_eastmoney_response_with_extra_fields() {
+        // The real API returns extra fields (rt, svr, lt, full, dlmkts).
+        // Our struct should ignore them gracefully.
+        let json = r#"{
+            "rc": 0,
+            "rt": 4,
+            "svr": 2887254139,
+            "lt": 1,
+            "full": 1,
+            "dlmkts": "",
+            "data": {
+                "f43": 1516.0,
+                "f44": 1519.0,
+                "f45": 1508.0,
+                "f47": 30279,
+                "f57": "600519",
+                "f58": "贵州茅台",
+                "f60": 1513.0,
+                "f169": 3.0,
+                "f170": 0.2
+            }
+        }"#;
+        let resp: EastMoneyResponse = serde_json::from_str(json).expect("should parse");
+        assert_eq!(resp.rc, Some(0));
+        let data = resp.data.unwrap();
+        assert!((data.f43.unwrap() - 1516.0).abs() < 0.001);
+        assert_eq!(data.f47.unwrap(), 30279);
     }
 
     fn sample_quote(symbol: &str, market: &str) -> StockQuote {
