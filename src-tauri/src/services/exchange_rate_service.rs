@@ -1,4 +1,5 @@
 use crate::models::ExchangeRates;
+use crate::services::http_client;
 use chrono::Utc;
 use serde::Deserialize;
 use std::sync::Mutex;
@@ -57,14 +58,8 @@ impl ExchangeRateCache {
 /// Fetch the latest exchange rates from open.er-api.com (USD base).
 pub async fn fetch_exchange_rates() -> Result<ExchangeRates, String> {
     let url = "https://open.er-api.com/v6/latest/USD";
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let response = client
+    let response = http_client::general_client()
         .get(url)
-        .header("User-Agent", "Mozilla/5.0")
         .send()
         .await
         .map_err(|e| format!("Network error fetching exchange rates: {}", e))?;
