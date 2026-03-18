@@ -25,7 +25,7 @@ pub async fn get_statistics_overview(
         updated_at: chrono::Utc::now().to_rfc3339(),
     });
 
-    let details = build_holding_details_pub(&db, &quote_cache).await?;
+    let details = build_holding_details_pub(&db, &quote_cache, true).await?;
 
     // Aggregate market distribution (values in USD for comparison)
     let mut market_map: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
@@ -146,7 +146,7 @@ pub async fn get_statistics_by_market(
     quote_cache: State<'_, QuoteCache>,
     market: String,
 ) -> Result<MarketStatistics, String> {
-    let all_details = build_holding_details_pub(&db, &quote_cache).await?;
+    let all_details = build_holding_details_pub(&db, &quote_cache, true).await?;
     let details: Vec<_> = all_details
         .into_iter()
         .filter(|d| d.market == market)
@@ -221,7 +221,7 @@ pub async fn get_statistics_by_account(
     quote_cache: State<'_, QuoteCache>,
     account_id: String,
 ) -> Result<AccountStatistics, String> {
-    let all_details = build_holding_details_pub(&db, &quote_cache).await?;
+    let all_details = build_holding_details_pub(&db, &quote_cache, true).await?;
     let details: Vec<_> = all_details
         .into_iter()
         .filter(|d| d.account_id == account_id)
@@ -321,7 +321,7 @@ pub async fn get_statistics_by_category(
         None => (category_id.clone(), "未分类".to_string(), "#8B8B8B".to_string()),
     };
 
-    let all_details = build_holding_details_pub(&db, &quote_cache).await?;
+    let all_details = build_holding_details_pub(&db, &quote_cache, true).await?;
     let details: Vec<_> = all_details
         .into_iter()
         .filter(|d| d.category_name == cat_name)
