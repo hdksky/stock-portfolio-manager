@@ -4,6 +4,7 @@ import { ReloadOutlined } from "@ant-design/icons";
 import { useStatisticsStore } from "../../stores/dashboardStore";
 import { useAccountStore } from "../../stores/accountStore";
 import { useCategoryStore } from "../../stores/categoryStore";
+import { useHoldingStore } from "../../stores/holdingStore";
 import { useQuoteStore } from "../../stores/quoteStore";
 import OverviewTab from "./OverviewTab";
 import MarketTab from "./MarketTab";
@@ -25,13 +26,15 @@ export default function StatisticsPage() {
   } = useStatisticsStore();
   const { accounts, fetchAccounts } = useAccountStore();
   const { categories, fetchCategories } = useCategoryStore();
+  const { holdings, fetchHoldings } = useHoldingStore();
   const { fetchHoldingQuotes } = useQuoteStore();
 
   useEffect(() => {
     fetchOverview();
     fetchAccounts();
     fetchCategories();
-  }, [fetchOverview, fetchAccounts, fetchCategories]);
+    fetchHoldings();
+  }, [fetchOverview, fetchAccounts, fetchCategories, fetchHoldings]);
 
   // Preselect first account and category
   useEffect(() => {
@@ -49,8 +52,22 @@ export default function StatisticsPage() {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      // Force-refresh all quotes from the API first
-      await fetchHoldingQuotes();
+      // When the "By Account" tab is active with a selected account, only
+      // force-refresh the quotes for that account's holdings.
+      if (activeTab === "account" && selectedAccountId) {
+        const seen = new Set<string>();
+        const symbols: [string, string][] = [];
+        for (const h of holdings) {
+          if (h.account_id === selectedAccountId && !seen.has(h.symbol)) {
+            seen.add(h.symbol);
+            symbols.push([h.symbol, h.market]);
+          }
+        }
+        await fetchHoldingQuotes(symbols);
+      } else {
+        // Force-refresh all quotes from the API
+        await fetchHoldingQuotes();
+      }
       // Re-fetch all statistics data using the now-fresh cache.
       // Since the backend reads from cache only, these are fast.
       const promises: Promise<void>[] = [fetchOverview()];
