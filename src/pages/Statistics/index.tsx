@@ -4,6 +4,7 @@ import { ReloadOutlined } from "@ant-design/icons";
 import { useStatisticsStore } from "../../stores/dashboardStore";
 import { useAccountStore } from "../../stores/accountStore";
 import { useCategoryStore } from "../../stores/categoryStore";
+import { useQuoteStore } from "../../stores/quoteStore";
 import OverviewTab from "./OverviewTab";
 import MarketTab from "./MarketTab";
 import AccountTab from "./AccountTab";
@@ -16,10 +17,15 @@ export default function StatisticsPage() {
   const [selectedMarket, setSelectedMarket] = useState("US");
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
 
-  const { overview, loadingOverview, fetchOverview } = useStatisticsStore();
+  const {
+    overview, loadingOverview,
+    fetchOverview, fetchMarketStats, fetchAccountStats, fetchCategoryStats,
+  } = useStatisticsStore();
   const { accounts, fetchAccounts } = useAccountStore();
   const { categories, fetchCategories } = useCategoryStore();
+  const { fetchHoldingQuotes } = useQuoteStore();
 
   useEffect(() => {
     fetchOverview();
@@ -40,8 +46,21 @@ export default function StatisticsPage() {
     }
   }, [categories, selectedCategoryId]);
 
-  const handleRefresh = () => {
-    fetchOverview();
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      // Force-refresh all quotes from the API first
+      await fetchHoldingQuotes();
+      // Re-fetch all statistics data using the now-fresh cache.
+      // Since the backend reads from cache only, these are fast.
+      const promises: Promise<void>[] = [fetchOverview()];
+      promises.push(fetchMarketStats(selectedMarket));
+      if (selectedAccountId) promises.push(fetchAccountStats(selectedAccountId));
+      if (selectedCategoryId) promises.push(fetchCategoryStats(selectedCategoryId));
+      await Promise.all(promises);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const tabs = [
@@ -91,7 +110,7 @@ export default function StatisticsPage() {
         <Button
           icon={<ReloadOutlined />}
           onClick={handleRefresh}
-          loading={loadingOverview}
+          loading={refreshing || loadingOverview}
           size="small"
         >
           刷新

@@ -9,16 +9,23 @@ use tauri::State;
 
 /// Build HoldingDetail records from raw holdings + quotes + account/category lookups.
 /// This is the shared implementation; call `build_holding_details_pub` from other modules.
+///
+/// When `cache_only` is `true` the function will **only** use quotes already
+/// present in the in-memory `QuoteCache` and will **never** call external
+/// quote-provider APIs.  This is the right mode for the Statistics page and
+/// similar read-only views that should not trigger network requests.
 pub async fn build_holding_details_pub(
     db: &Database,
     quote_cache: &QuoteCache,
+    cache_only: bool,
 ) -> Result<Vec<HoldingDetail>, String> {
-    build_holding_details(db, quote_cache).await
+    build_holding_details(db, quote_cache, cache_only).await
 }
 
 async fn build_holding_details(
     db: &Database,
     quote_cache: &QuoteCache,
+    cache_only: bool,
 ) -> Result<Vec<HoldingDetail>, String> {
     // Load holdings and lookup data in one DB operation
     struct Row {
@@ -82,7 +89,11 @@ async fn build_holding_details(
         .iter()
         .map(|r| (r.symbol.clone(), r.market.clone()))
         .collect();
-    let quotes = {
+    let quotes = if cache_only {
+        // Cache-only mode: read from in-memory cache, never call external APIs.
+        let (cached, _missing) = quote_cache.get_batch(&symbols);
+        cached
+    } else {
         let config = quote_provider_service::get_quote_provider_config(db)?;
         fetch_quotes_batch_cached_with_providers(quote_cache, symbols, &config.us_provider, &config.hk_provider, false).await?
     };
@@ -134,7 +145,7 @@ pub async fn get_holdings_with_quotes(
     db: State<'_, Database>,
     quote_cache: State<'_, QuoteCache>,
 ) -> Result<Vec<HoldingDetail>, String> {
-    build_holding_details(&db, &quote_cache).await
+    build_holding_details(&db, &quote_cache, false).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -153,7 +164,7 @@ pub async fn get_dashboard_summary(
         updated_at: chrono::Utc::now().to_rfc3339(),
     });
 
-    let details = build_holding_details(&db, &quote_cache).await?;
+    let details = build_holding_details(&db, &quote_cache, false).await?;
 
     let mut us_market_value = 0.0f64;
     let mut cn_market_value = 0.0f64;
