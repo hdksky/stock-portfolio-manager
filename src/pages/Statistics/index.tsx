@@ -19,7 +19,10 @@ export default function StatisticsPage() {
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
   const [refreshing, setRefreshing] = useState(false);
 
-  const { overview, loadingOverview, fetchOverview, fetchMarketStats, fetchAccountStats, fetchCategoryStats } = useStatisticsStore();
+  const {
+    overview, loadingOverview,
+    fetchOverview, fetchMarketStats, fetchAccountStats, fetchCategoryStats,
+  } = useStatisticsStore();
   const { accounts, fetchAccounts } = useAccountStore();
   const { categories, fetchCategories } = useCategoryStore();
   const { fetchHoldingQuotes } = useQuoteStore();
@@ -48,15 +51,13 @@ export default function StatisticsPage() {
     try {
       // Force-refresh all quotes from the API first
       await fetchHoldingQuotes();
-      // Re-fetch statistics using the now-fresh cache
-      await fetchOverview();
-      if (activeTab === "market") {
-        await fetchMarketStats(selectedMarket);
-      } else if (activeTab === "account" && selectedAccountId) {
-        await fetchAccountStats(selectedAccountId);
-      } else if (activeTab === "category" && selectedCategoryId) {
-        await fetchCategoryStats(selectedCategoryId);
-      }
+      // Re-fetch all statistics data using the now-fresh cache.
+      // Since the backend reads from cache only, these are fast.
+      const promises: Promise<void>[] = [fetchOverview()];
+      promises.push(fetchMarketStats(selectedMarket));
+      if (selectedAccountId) promises.push(fetchAccountStats(selectedAccountId));
+      if (selectedCategoryId) promises.push(fetchCategoryStats(selectedCategoryId));
+      await Promise.all(promises);
     } finally {
       setRefreshing(false);
     }
