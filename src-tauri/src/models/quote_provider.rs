@@ -14,6 +14,11 @@ pub struct QuoteProviderConfig {
     pub hk_provider: String,
     /// Provider for CN A-shares: "eastmoney" (default)
     pub cn_provider: String,
+    /// Optional user-provided Xueqiu cookie string (e.g. copied from a
+    /// logged-in browser session).  When set, API requests to Xueqiu will use
+    /// this cookie instead of the automatically obtained anonymous token.
+    #[serde(default)]
+    pub xueqiu_cookie: Option<String>,
 }
 
 impl Default for QuoteProviderConfig {
@@ -22,6 +27,7 @@ impl Default for QuoteProviderConfig {
             us_provider: "eastmoney".to_string(),
             hk_provider: "eastmoney".to_string(),
             cn_provider: "eastmoney".to_string(),
+            xueqiu_cookie: None,
         }
     }
 }

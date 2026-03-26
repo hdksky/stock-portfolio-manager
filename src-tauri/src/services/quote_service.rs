@@ -694,6 +694,31 @@ fn parse_eastmoney_quote(symbol: &str, market: &str, resp: EastMoneyResponse) ->
 /// Whether the Xueqiu client has obtained a session cookie from the homepage.
 static XUEQIU_TOKEN_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
+/// User-provided Xueqiu cookie string (from a logged-in browser session).
+/// When set, this takes priority over the automatic homepage token fetch.
+static XUEQIU_USER_COOKIE: Mutex<Option<String>> = Mutex::new(None);
+
+/// Set (or clear) the user-provided Xueqiu cookie.
+///
+/// After calling this, subsequent Xueqiu API requests will include this cookie
+/// in the `Cookie` header, bypassing the automatic homepage token fetch.
+pub fn set_xueqiu_user_cookie(cookie: Option<String>) {
+    let cookie = cookie
+        .as_deref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let mut guard = XUEQIU_USER_COOKIE.lock().unwrap();
+    *guard = cookie;
+    // Reset the automatic token so the next request picks up the new cookie.
+    XUEQIU_TOKEN_INITIALIZED.store(false, Ordering::SeqCst);
+}
+
+/// Return a clone of the current user-provided Xueqiu cookie, if any.
+fn get_xueqiu_user_cookie() -> Option<String> {
+    XUEQIU_USER_COOKIE.lock().unwrap().clone()
+}
+
 /// Ensure the Xueqiu HTTP client has a valid session token.
 ///
 /// Xueqiu requires an `xq_a_token` cookie which is set when visiting the
@@ -703,8 +728,19 @@ static XUEQIU_TOKEN_INITIALIZED: AtomicBool = AtomicBool::new(false);
 /// The homepage request uses browser page-load headers (`Accept: text/html`)
 /// rather than API-style headers to ensure the server returns a full page
 /// response that sets the session cookie.
+///
+/// If a user-provided cookie is configured, the homepage visit is skipped
+/// entirely because authentication is handled via the explicit `Cookie` header
+/// added in [`send_xueqiu_request`].
 async fn ensure_xueqiu_token() -> Result<(), String> {
     if XUEQIU_TOKEN_INITIALIZED.load(Ordering::SeqCst) {
+        return Ok(());
+    }
+
+    // When the user has provided a cookie from their browser, skip the
+    // homepage visit – the cookie will be attached directly to each request.
+    if get_xueqiu_user_cookie().is_some() {
+        XUEQIU_TOKEN_INITIALIZED.store(true, Ordering::SeqCst);
         return Ok(());
     }
 
@@ -769,6 +805,9 @@ const XUEQIU_MAX_RETRIES: u32 = 2;
 ///
 /// If the initial request returns HTTP 400 (which indicates an expired or
 /// missing session token), the token is refreshed and the request is retried.
+///
+/// When a user-provided cookie is available it is attached as a `Cookie`
+/// header on every request, taking priority over the automatic cookie jar.
 async fn send_xueqiu_request(url: &str, symbol: &str) -> Result<reqwest::Response, String> {
     ensure_xueqiu_token().await?;
 
@@ -776,7 +815,14 @@ async fn send_xueqiu_request(url: &str, symbol: &str) -> Result<reqwest::Respons
     let mut last_err = String::new();
 
     for attempt in 0..=XUEQIU_MAX_RETRIES {
-        let result = client.get(url).send().await;
+        let mut req = client.get(url);
+
+        // Attach the user-provided cookie if configured.
+        if let Some(ref cookie) = get_xueqiu_user_cookie() {
+            req = req.header(reqwest::header::COOKIE, cookie.as_str());
+        }
+
+        let result = req.send().await;
         match result {
             Ok(resp) if resp.status() == reqwest::StatusCode::BAD_REQUEST && attempt < XUEQIU_MAX_RETRIES => {
                 // Log the 400 response for diagnosis before retrying.
