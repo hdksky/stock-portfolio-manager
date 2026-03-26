@@ -709,14 +709,14 @@ async fn ensure_xueqiu_token() -> Result<(), String> {
         .get("https://xueqiu.com")
         .send()
         .await
-        .map_err(|e| format!("Failed to initialise Xueqiu token: {}", e))?;
+        .map_err(|e| format!("Failed to initialize Xueqiu token: {}", e))?;
 
     if resp.status().is_success() || resp.status().is_redirection() {
         XUEQIU_TOKEN_INITIALIZED.store(true, Ordering::SeqCst);
         Ok(())
     } else {
         Err(format!(
-            "Failed to initialise Xueqiu token: HTTP {}",
+            "Failed to initialize Xueqiu token: HTTP {}",
             resp.status()
         ))
     }
