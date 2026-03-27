@@ -628,9 +628,17 @@ fn to_eastmoney_secid(symbol: &str) -> Result<String, String> {
     Ok(format!("{}.{}", market_id, code))
 }
 
-/// Convert a US stock ticker to East Money secid format: "105.{TICKER}".
+/// Convert a US stock ticker to East Money secid format.
+/// Regular tickers use "105.{TICKER}" (e.g., "105.AAPL").
+/// Tickers with hyphens use "106.{TICKER}" with hyphens replaced by underscores
+/// (e.g., "BRK-B" → "106.BRK_B").
 fn to_eastmoney_us_secid(symbol: &str) -> String {
-    format!("105.{}", symbol.to_uppercase().replace('-', "."))
+    let upper = symbol.to_uppercase();
+    if upper.contains('-') {
+        format!("106.{}", upper.replace('-', "_"))
+    } else {
+        format!("105.{}", upper)
+    }
 }
 
 /// Convert a HK stock symbol to East Money secid format: "116.{5-digit code}".
@@ -1519,10 +1527,10 @@ mod tests {
         assert_eq!(to_eastmoney_us_secid("AAPL"), "105.AAPL");
         assert_eq!(to_eastmoney_us_secid("msft"), "105.MSFT");
         assert_eq!(to_eastmoney_us_secid("GOOGL"), "105.GOOGL");
-        // Hyphens should be converted to dots
-        assert_eq!(to_eastmoney_us_secid("BRK-B"), "105.BRK.B");
-        assert_eq!(to_eastmoney_us_secid("BRK-A"), "105.BRK.A");
-        assert_eq!(to_eastmoney_us_secid("BF-B"), "105.BF.B");
+        // Hyphens should be converted to underscores with prefix 106
+        assert_eq!(to_eastmoney_us_secid("BRK-B"), "106.BRK_B");
+        assert_eq!(to_eastmoney_us_secid("BRK-A"), "106.BRK_A");
+        assert_eq!(to_eastmoney_us_secid("BF-B"), "106.BF_B");
     }
 
     #[test]
