@@ -29,9 +29,9 @@ const PROVIDER_OPTIONS_CN = [
 export default function GeneralSettings() {
   const { refreshIntervalMs, setRefreshInterval } = useQuoteStore();
   const [providerConfig, setProviderConfig] = useState<QuoteProviderConfig>({
-    us_provider: "eastmoney",
-    hk_provider: "eastmoney",
-    cn_provider: "eastmoney",
+    us_provider: "xueqiu",
+    hk_provider: "xueqiu",
+    cn_provider: "xueqiu",
     xueqiu_cookie: null,
   });
 
