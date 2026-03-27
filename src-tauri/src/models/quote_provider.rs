@@ -8,11 +8,11 @@ use serde::{Deserialize, Serialize};
 /// - `"xueqiu"`    – Xueqiu (雪球), supports CN / HK / US
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QuoteProviderConfig {
-    /// Provider for US stocks: "eastmoney" (default)
+    /// Provider for US stocks: "xueqiu" (default)
     pub us_provider: String,
-    /// Provider for HK stocks: "eastmoney" (default)
+    /// Provider for HK stocks: "xueqiu" (default)
     pub hk_provider: String,
-    /// Provider for CN A-shares: "eastmoney" (default)
+    /// Provider for CN A-shares: "xueqiu" (default)
     pub cn_provider: String,
     /// Optional user-provided Xueqiu cookie string (e.g. copied from a
     /// logged-in browser session).  When set, API requests to Xueqiu will use
@@ -24,9 +24,9 @@ pub struct QuoteProviderConfig {
 impl Default for QuoteProviderConfig {
     fn default() -> Self {
         QuoteProviderConfig {
-            us_provider: "eastmoney".to_string(),
-            hk_provider: "eastmoney".to_string(),
-            cn_provider: "eastmoney".to_string(),
+            us_provider: "xueqiu".to_string(),
+            hk_provider: "xueqiu".to_string(),
+            cn_provider: "xueqiu".to_string(),
             xueqiu_cookie: None,
         }
     }
