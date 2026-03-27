@@ -90,6 +90,10 @@ pub fn run() {
                 let config = services::quote_provider_service::get_quote_provider_config(&db)
                     .unwrap_or_default();
 
+                // Load user-provided Xueqiu cookie (if any) so that API
+                // requests from the background refresh can use it.
+                services::quote_service::set_xueqiu_user_cookie(config.xueqiu_cookie.clone());
+
                 // Force-refresh all holding quotes from the upstream API.
                 match services::quote_service::fetch_quotes_batch_cached_with_providers(
                     &cache,

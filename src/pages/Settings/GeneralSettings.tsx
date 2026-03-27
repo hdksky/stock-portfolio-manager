@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Card, Form, Select, Typography, message } from "antd";
+import { Card, Form, Input, Select, Typography, message } from "antd";
 import { invoke } from "@tauri-apps/api/core";
 import { useQuoteStore } from "../../stores/quoteStore";
 import type { QuoteProviderConfig } from "../../types";
@@ -32,6 +32,7 @@ export default function GeneralSettings() {
     us_provider: "eastmoney",
     hk_provider: "eastmoney",
     cn_provider: "eastmoney",
+    xueqiu_cookie: null,
   });
 
   useEffect(() => {
@@ -60,6 +61,22 @@ export default function GeneralSettings() {
       message.error("更新失败: " + String(err));
     }
   };
+
+  const handleCookieSave = async (cookieValue: string) => {
+    const updated = { ...providerConfig, xueqiu_cookie: cookieValue || null };
+    try {
+      await invoke("update_quote_provider_config", { config: updated });
+      setProviderConfig(updated);
+      message.success("雪球 Cookie 已更新");
+    } catch (err) {
+      message.error("更新失败: " + String(err));
+    }
+  };
+
+  const isXueqiuUsed =
+    providerConfig.us_provider === "xueqiu" ||
+    providerConfig.hk_provider === "xueqiu" ||
+    providerConfig.cn_provider === "xueqiu";
 
   return (
     <div className="space-y-6">
@@ -91,6 +108,30 @@ export default function GeneralSettings() {
           各市场的行情数据来源：A股支持东方财富和雪球，港股和美股支持 Yahoo Finance、东方财富和雪球。修改后将在下次刷新时生效。
         </Paragraph>
       </Card>
+
+      {isXueqiuUsed && (
+        <Card title="雪球 Cookie 设置">
+          <Form layout="vertical" style={{ maxWidth: 600 }}>
+            <Form.Item
+              label="雪球 Cookie"
+              extra="从浏览器中复制雪球的 Cookie，粘贴到此处。步骤：登录 xueqiu.com → 按 F12 打开开发者工具 → Application → Cookies → 复制 xq_a_token 的值，格式如：xq_a_token=xxx"
+            >
+              <Input.TextArea
+                rows={3}
+                placeholder="xq_a_token=your_token_value"
+                value={providerConfig.xueqiu_cookie ?? ""}
+                onChange={(e) =>
+                  setProviderConfig({ ...providerConfig, xueqiu_cookie: e.target.value || null })
+                }
+                onBlur={(e) => handleCookieSave(e.target.value)}
+              />
+            </Form.Item>
+          </Form>
+          <Paragraph type="secondary">
+            雪球 API 需要登录后的 Cookie 才能访问。如果遇到 400 错误，请在浏览器中登录雪球账号，然后将 Cookie 粘贴到上方输入框中。Cookie 可能会过期，届时需要重新获取。
+          </Paragraph>
+        </Card>
+      )}
 
       <Card title="行情刷新设置">
         <Form layout="vertical" style={{ maxWidth: 400 }}>

@@ -235,6 +235,11 @@ impl Database {
             );
         ")?;
 
+        // Add xueqiu_cookie column if not exists (migration)
+        let _ = conn.execute_batch("
+            ALTER TABLE quote_provider_config ADD COLUMN xueqiu_cookie TEXT;
+        ");
+
         conn.execute_batch("
             CREATE TABLE IF NOT EXISTS ai_config (
                 id INTEGER PRIMARY KEY DEFAULT 1,
