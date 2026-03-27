@@ -17,13 +17,13 @@ const INTERVAL_OPTIONS = [
 
 const PROVIDER_OPTIONS_US_HK = [
   { value: "yahoo", label: "Yahoo Finance" },
-  { value: "eastmoney", label: "东方财富（默认）" },
-  { value: "xueqiu", label: "雪球" },
+  { value: "eastmoney", label: "东方财富" },
+  { value: "xueqiu", label: "雪球（默认）" },
 ];
 
 const PROVIDER_OPTIONS_CN = [
-  { value: "eastmoney", label: "东方财富（默认）" },
-  { value: "xueqiu", label: "雪球" },
+  { value: "eastmoney", label: "东方财富" },
+  { value: "xueqiu", label: "雪球（默认）" },
 ];
 
 export default function GeneralSettings() {
