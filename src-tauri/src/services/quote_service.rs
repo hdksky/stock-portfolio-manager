@@ -1363,64 +1363,17 @@ pub async fn fetch_stock_history_xueqiu(
     let calendar_days = (end_date - start_date).num_days() + 10;
     let count = calendar_days.max(30);
 
-    // begin is the first millisecond of the day *after* end_date so that the
-    // API includes all trading sessions that fall on end_date itself.
-    let begin_ts = end_date
-        .succ_opt()
-        .unwrap_or(end_date)
-        .and_hms_opt(0, 0, 0)
-        .unwrap()
-        .and_utc()
-        .timestamp_millis();
+    // The Xueqiu kline API `begin` parameter must be the current timestamp
+    // in milliseconds. The API returns `count` trading days of data going
+    // backwards from `begin` when `type=before`.
+    let begin_ts = chrono::Utc::now().timestamp_millis();
 
     let url = format!(
         "https://stock.xueqiu.com/v5/stock/chart/kline.json?symbol={}&begin={}&period=day&type=before&count=-{}&indicator=kline",
         xueqiu_symbol, begin_ts, count
     );
 
-    // The kline endpoint may return HTTP 200 with a non-kline response
-    // (e.g. {"data":{"items":[],"items_size":0}}) when the session token
-    // is insufficient.  Unlike the quote endpoint which returns HTTP 400,
-    // this failure is invisible to send_xueqiu_request's retry logic.
-    // We therefore retry once with a refreshed token when we detect this
-    // pattern (missing `column` field in an otherwise successful response).
-    const MAX_KLINE_AUTH_RETRIES: u32 = 1;
-    let mut last_err = format!(
-        "fetch_stock_history_xueqiu: failed for {} after auth retries",
-        symbol
-    );
-    for attempt in 0..=MAX_KLINE_AUTH_RETRIES {
-        if attempt > 0 {
-            eprintln!(
-                "fetch_stock_history_xueqiu: auth issue detected for {}, refreshing token and retrying (attempt {}/{})",
-                symbol, attempt + 1, MAX_KLINE_AUTH_RETRIES + 1
-            );
-            reset_xueqiu_token();
-            tokio::time::sleep(Duration::from_millis(500)).await;
-        }
-
-        match fetch_stock_history_xueqiu_once(&url, symbol, start_date, end_date).await {
-            Ok(result) => return Ok(result),
-            Err(e) if e.contains("authentication issue") && attempt < MAX_KLINE_AUTH_RETRIES => {
-                last_err = e;
-                continue;
-            }
-            Err(e) => return Err(e),
-        }
-    }
-    Err(last_err)
-}
-
-/// Single attempt to fetch kline data from Xueqiu.  Returns an error
-/// containing "authentication issue" when the response is missing the
-/// expected `column` field (indicating insufficient auth).
-async fn fetch_stock_history_xueqiu_once(
-    url: &str,
-    symbol: &str,
-    start_date: chrono::NaiveDate,
-    end_date: chrono::NaiveDate,
-) -> Result<Vec<(chrono::NaiveDate, f64)>, String> {
-    let response = send_xueqiu_request(url, symbol).await?;
+    let response = send_xueqiu_request(&url, symbol).await?;
 
     if !response.status().is_success() {
         let status = response.status();
@@ -1468,7 +1421,7 @@ async fn fetch_stock_history_xueqiu_once(
     if columns.is_empty() {
         let preview: String = body.chars().take(XUEQIU_RESPONSE_PREVIEW_LEN).collect();
         return Err(format!(
-            "fetch_stock_history_xueqiu: empty or missing 'column' field for {} (authentication issue). Response preview: {}",
+            "fetch_stock_history_xueqiu: empty or missing 'column' field for {}. Response preview: {}",
             symbol, preview
         ));
     }
@@ -2994,16 +2947,15 @@ mod tests {
         );
     }
 
-    /// Test the exact unauthenticated kline response pattern where Xueqiu
-    /// returns `{"data":{"items":[],"items_size":0}}` instead of the expected
-    /// `{"data":{"column":[...],"item":[...]}}` format.
+    /// Test parsing a kline response that has `items`/`items_size` fields
+    /// but no `column`/`item` fields (e.g. when API returns empty data).
     #[test]
-    fn test_parse_xueqiu_kline_unauthenticated_response() {
+    fn test_parse_xueqiu_kline_empty_data_response() {
         let body = r#"{"data":{"items":[],"items_size":0},"error_code":0,"error_description":""}"#;
         let start = chrono::NaiveDate::from_ymd_opt(2024, 8, 1).unwrap();
         let end = chrono::NaiveDate::from_ymd_opt(2024, 8, 31).unwrap();
         let result = parse_xueqiu_kline_body(body, start, end);
-        assert!(result.is_err(), "Unauthenticated response should be detected as error");
+        assert!(result.is_err(), "Response without column field should be an error");
         let err = result.unwrap_err();
         assert!(
             err.contains("empty or missing"),
