@@ -1464,7 +1464,7 @@ pub async fn fetch_stock_history_xueqiu(
         }
     }
 
-    if items.len() > 0 && result.is_empty() {
+    if !items.is_empty() && result.is_empty() {
         // Log a diagnostic when the API returned items but none survived
         // parsing or date filtering – helps diagnose future issues.
         let preview: String = items
