@@ -1384,12 +1384,16 @@ pub async fn fetch_stock_history_xueqiu(
     // this failure is invisible to send_xueqiu_request's retry logic.
     // We therefore retry once with a refreshed token when we detect this
     // pattern (missing `column` field in an otherwise successful response).
-    let mut last_err = String::new();
-    for attempt in 0..=1u32 {
+    const MAX_KLINE_AUTH_RETRIES: u32 = 1;
+    let mut last_err = format!(
+        "fetch_stock_history_xueqiu: failed for {} after auth retries",
+        symbol
+    );
+    for attempt in 0..=MAX_KLINE_AUTH_RETRIES {
         if attempt > 0 {
             eprintln!(
-                "fetch_stock_history_xueqiu: auth issue detected for {}, refreshing token and retrying (attempt {}/2)",
-                symbol, attempt + 1
+                "fetch_stock_history_xueqiu: auth issue detected for {}, refreshing token and retrying (attempt {}/{})",
+                symbol, attempt + 1, MAX_KLINE_AUTH_RETRIES + 1
             );
             reset_xueqiu_token();
             tokio::time::sleep(Duration::from_millis(500)).await;
@@ -1397,7 +1401,7 @@ pub async fn fetch_stock_history_xueqiu(
 
         match fetch_stock_history_xueqiu_once(&url, symbol, start_date, end_date).await {
             Ok(result) => return Ok(result),
-            Err(e) if e.contains("authentication issue") && attempt == 0 => {
+            Err(e) if e.contains("authentication issue") && attempt < MAX_KLINE_AUTH_RETRIES => {
                 last_err = e;
                 continue;
             }
