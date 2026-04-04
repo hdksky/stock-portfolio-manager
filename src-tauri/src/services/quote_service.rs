@@ -709,6 +709,15 @@ static XUEQIU_TOKEN_INITIALIZED: AtomicBool = AtomicBool::new(false);
 /// When set, this takes priority over the automatic homepage token fetch.
 static XUEQIU_USER_COOKIE: Mutex<Option<String>> = Mutex::new(None);
 
+/// Auto-obtained `xq_a_token` value extracted from the homepage response.
+///
+/// The Xueqiu cookie jar may not send cookies set by `xueqiu.com` to the
+/// API subdomain `stock.xueqiu.com` if the cookie lacks a `Domain` attribute
+/// (RFC 6265 restricts such cookies to the exact host).  By storing the token
+/// explicitly we can attach it via the `Cookie` header on every API request,
+/// guaranteeing it reaches the API regardless of cookie-jar domain matching.
+static XUEQIU_AUTO_COOKIE: Mutex<Option<String>> = Mutex::new(None);
+
 /// Set (or clear) the user-provided Xueqiu cookie.
 ///
 /// After calling this, subsequent Xueqiu API requests will include this cookie
@@ -772,23 +781,51 @@ async fn ensure_xueqiu_token() -> Result<(), String> {
 
     let status = resp.status();
 
-    // Log Set-Cookie headers for diagnosis (helps debug token issues).
-    let cookie_names: Vec<String> = resp
-        .headers()
-        .get_all(reqwest::header::SET_COOKIE)
-        .iter()
-        .filter_map(|v| {
-            v.to_str().ok().and_then(|s| s.split('=').next().map(String::from))
-        })
-        .collect();
-    if cookie_names.is_empty() {
+    // Extract `xq_a_token` from Set-Cookie headers so we can attach it
+    // explicitly to API requests (see XUEQIU_AUTO_COOKIE doc comment).
+    let mut auto_token: Option<String> = None;
+    let mut cookie_names: Vec<String> = Vec::new();
+    for header_val in resp.headers().get_all(reqwest::header::SET_COOKIE).iter() {
+        if let Ok(s) = header_val.to_str() {
+            if let Some(name) = s.split('=').next() {
+                cookie_names.push(name.to_string());
+            }
+            if s.starts_with("xq_a_token=") {
+                // Parse value: everything after "xq_a_token=" up to the first ";"
+                let val_start = "xq_a_token=".len();
+                let val_end = s[val_start..].find(';').map(|i| val_start + i).unwrap_or(s.len());
+                let token_value = &s[val_start..val_end];
+                if !token_value.is_empty() {
+                    auto_token = Some(token_value.to_string());
+                }
+            }
+        }
+    }
+    // Also try resp.cookies() (convenience wrapper over Set-Cookie).
+    if auto_token.is_none() {
+        for cookie in resp.cookies() {
+            if cookie.name() == "xq_a_token" && !cookie.value().is_empty() {
+                auto_token = Some(cookie.value().to_string());
+                break;
+            }
+        }
+    }
+
+    if let Some(ref token) = auto_token {
         eprintln!(
-            "Xueqiu token init: homepage returned HTTP {} but no Set-Cookie headers in final response (cookies may have been set during redirects)",
+            "Xueqiu token init: captured xq_a_token (len={}) from homepage HTTP {}",
+            token.len(),
+            status
+        );
+        *XUEQIU_AUTO_COOKIE.lock().unwrap() = auto_token.clone();
+    } else if cookie_names.is_empty() {
+        eprintln!(
+            "Xueqiu token init: homepage returned HTTP {} but no Set-Cookie headers (xq_a_token not found; cookies may have been set during redirects)",
             status
         );
     } else {
         eprintln!(
-            "Xueqiu token init: homepage returned HTTP {}, cookies received: {:?}",
+            "Xueqiu token init: homepage returned HTTP {}, cookies received: {:?} (xq_a_token NOT found among them)",
             status, cookie_names
         );
     }
@@ -807,6 +844,7 @@ async fn ensure_xueqiu_token() -> Result<(), String> {
 /// Reset the Xueqiu session token so that the next API call will re-fetch it.
 fn reset_xueqiu_token() {
     XUEQIU_TOKEN_INITIALIZED.store(false, Ordering::SeqCst);
+    *XUEQIU_AUTO_COOKIE.lock().unwrap() = None;
 }
 
 /// Maximum number of retry attempts for transient Xueqiu API failures.
@@ -831,6 +869,11 @@ async fn send_xueqiu_request(url: &str, symbol: &str) -> Result<reqwest::Respons
         // Attach the user-provided cookie if configured.
         // The user may supply just the token value or the full "xq_a_token=…"
         // string.  Normalize so that the header always contains the key.
+        //
+        // When no user cookie is configured, attach the auto-obtained token
+        // explicitly via the Cookie header.  This ensures the cookie reaches
+        // `stock.xueqiu.com` even if the cookie jar restricts it to the
+        // exact `xueqiu.com` host (RFC 6265 domain-matching rules).
         if let Some(ref cookie) = get_xueqiu_user_cookie() {
             let header_value = if cookie.starts_with("xq_a_token=") {
                 cookie.clone()
@@ -838,6 +881,11 @@ async fn send_xueqiu_request(url: &str, symbol: &str) -> Result<reqwest::Respons
                 format!("xq_a_token={}", cookie)
             };
             req = req.header(reqwest::header::COOKIE, header_value);
+        } else if let Some(ref auto_token) = *XUEQIU_AUTO_COOKIE.lock().unwrap() {
+            req = req.header(
+                reqwest::header::COOKIE,
+                format!("xq_a_token={}", auto_token),
+            );
         }
 
         let result = req.send().await;
@@ -1451,7 +1499,10 @@ pub async fn fetch_stock_history_xueqiu(
 
         let preview: String = body.chars().take(XUEQIU_RESPONSE_PREVIEW_LEN).collect();
         return Err(format!(
-            "fetch_stock_history_xueqiu: empty or missing 'column' field for {}. URL: {} Response preview: {}",
+            "fetch_stock_history_xueqiu: empty or missing 'column' field for {}. \
+             The Xueqiu kline API may require a logged-in session. \
+             Try providing your browser cookie in Settings → Quote Provider → Xueqiu Cookie. \
+             URL: {} Response preview: {}",
             symbol, url, preview
         ));
     }
