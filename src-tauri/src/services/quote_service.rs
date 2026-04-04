@@ -1587,18 +1587,68 @@ pub async fn fetch_stock_history(
                         "fetch_stock_history: Xueqiu returned empty history for {} ({}), falling back to eastmoney",
                         symbol, market
                     );
-                    fetch_stock_history_eastmoney(symbol, market, start_date, end_date).await
+                    match fetch_stock_history_eastmoney(symbol, market, start_date, end_date).await {
+                        Ok(prices) if !prices.is_empty() => Ok(prices),
+                        Ok(_empty) => {
+                            eprintln!(
+                                "fetch_stock_history: EastMoney also returned empty history for {} ({}), falling back to yahoo",
+                                symbol, market
+                            );
+                            fetch_stock_history_yahoo(symbol, market, start_date, end_date).await
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "fetch_stock_history: EastMoney fallback also failed for {} ({}): {}, falling back to yahoo",
+                                symbol, market, e
+                            );
+                            fetch_stock_history_yahoo(symbol, market, start_date, end_date).await
+                        }
+                    }
                 }
                 Err(e) => {
                     eprintln!(
                         "fetch_stock_history: Xueqiu history failed for {} ({}): {}, falling back to eastmoney",
                         symbol, market, e
                     );
-                    fetch_stock_history_eastmoney(symbol, market, start_date, end_date).await
+                    match fetch_stock_history_eastmoney(symbol, market, start_date, end_date).await {
+                        Ok(prices) if !prices.is_empty() => Ok(prices),
+                        Ok(_empty) => {
+                            eprintln!(
+                                "fetch_stock_history: EastMoney also returned empty history for {} ({}), falling back to yahoo",
+                                symbol, market
+                            );
+                            fetch_stock_history_yahoo(symbol, market, start_date, end_date).await
+                        }
+                        Err(e2) => {
+                            eprintln!(
+                                "fetch_stock_history: EastMoney fallback also failed for {} ({}): {}, falling back to yahoo",
+                                symbol, market, e2
+                            );
+                            fetch_stock_history_yahoo(symbol, market, start_date, end_date).await
+                        }
+                    }
                 }
             }
         }
-        "eastmoney" => fetch_stock_history_eastmoney(symbol, market, start_date, end_date).await,
+        "eastmoney" => {
+            match fetch_stock_history_eastmoney(symbol, market, start_date, end_date).await {
+                Ok(prices) if !prices.is_empty() => Ok(prices),
+                Ok(_empty) => {
+                    eprintln!(
+                        "fetch_stock_history: EastMoney returned empty history for {} ({}), falling back to yahoo",
+                        symbol, market
+                    );
+                    fetch_stock_history_yahoo(symbol, market, start_date, end_date).await
+                }
+                Err(e) => {
+                    eprintln!(
+                        "fetch_stock_history: EastMoney history failed for {} ({}): {}, falling back to yahoo",
+                        symbol, market, e
+                    );
+                    fetch_stock_history_yahoo(symbol, market, start_date, end_date).await
+                }
+            }
+        }
         _ => fetch_stock_history_yahoo(symbol, market, start_date, end_date).await,
     }
 }
