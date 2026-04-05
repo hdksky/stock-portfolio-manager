@@ -3,7 +3,7 @@ name = "stock-portfolio-manager"
 version = "0.6.0"
 description = "Stock Portfolio Manager"
 authors = []
-edition = "2026"
+edition = "2021"
 
 [[bin]]
 name = "stock-portfolio-manager"
