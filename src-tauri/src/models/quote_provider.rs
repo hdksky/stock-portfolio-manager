@@ -14,9 +14,12 @@ pub struct QuoteProviderConfig {
     pub hk_provider: String,
     /// Provider for CN A-shares: "xueqiu" (default)
     pub cn_provider: String,
+    /// Optional user-provided Xueqiu cookie string (e.g. `xq_a_token=xxx`).
+    /// When set, this replaces the auto-obtained `xq_a_token` in API requests.
+    #[serde(default)]
+    pub xueqiu_cookie: Option<String>,
     /// Xueqiu `u` cookie value (user ID from a logged-in browser session).
-    /// The kline API requires both `xq_a_token` (obtained automatically) and
-    /// the `u` cookie.  Only the `u` value needs to be provided by the user.
+    /// The kline API requires both `xq_a_token` and `u` to return data.
     #[serde(default)]
     pub xueqiu_u: Option<String>,
 }
@@ -27,6 +30,7 @@ impl Default for QuoteProviderConfig {
             us_provider: "xueqiu".to_string(),
             hk_provider: "xueqiu".to_string(),
             cn_provider: "xueqiu".to_string(),
+            xueqiu_cookie: None,
             xueqiu_u: None,
         }
     }

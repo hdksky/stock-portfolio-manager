@@ -32,6 +32,7 @@ export default function GeneralSettings() {
     us_provider: "xueqiu",
     hk_provider: "xueqiu",
     cn_provider: "xueqiu",
+    xueqiu_cookie: null,
     xueqiu_u: null,
   });
 
@@ -57,6 +58,17 @@ export default function GeneralSettings() {
       await invoke("update_quote_provider_config", { config: updated });
       setProviderConfig(updated);
       message.success("行情数据源已更新");
+    } catch (err) {
+      message.error("更新失败: " + String(err));
+    }
+  };
+
+  const handleCookieSave = async (cookieValue: string) => {
+    const updated = { ...providerConfig, xueqiu_cookie: cookieValue || null };
+    try {
+      await invoke("update_quote_provider_config", { config: updated });
+      setProviderConfig(updated);
+      message.success("雪球 Cookie 已更新");
     } catch (err) {
       message.error("更新失败: " + String(err));
     }
@@ -110,11 +122,24 @@ export default function GeneralSettings() {
       </Card>
 
       {isXueqiuUsed && (
-        <Card title="雪球用户 ID 设置">
+        <Card title="雪球 Cookie 设置">
           <Form layout="vertical" style={{ maxWidth: 400 }}>
             <Form.Item
+              label="雪球 Cookie"
+              extra="登录 xueqiu.com → F12 → Application → Cookies → 复制 xq_a_token 的值"
+            >
+              <Input
+                placeholder="例如：xq_a_token=6a7dc04b2c6770dc8e..."
+                value={providerConfig.xueqiu_cookie ?? ""}
+                onChange={(e) =>
+                  setProviderConfig({ ...providerConfig, xueqiu_cookie: e.target.value || null })
+                }
+                onBlur={(e) => handleCookieSave(e.target.value)}
+              />
+            </Form.Item>
+            <Form.Item
               label="雪球用户 ID (u)"
-              extra="登录 xueqiu.com → 按 F12 → Application → Cookies → 找到 u 的值"
+              extra="同上位置，找到 u 的值"
             >
               <Input
                 placeholder="例如：9095890697"
@@ -127,7 +152,7 @@ export default function GeneralSettings() {
             </Form.Item>
           </Form>
           <Paragraph type="secondary">
-            雪球历史行情 API 需要登录用户的 u Cookie 值。该值可能会过期，届时需要重新获取。
+            雪球历史行情 API 需要 Cookie 和用户 ID 才能获取数据。两者都需要填写。Cookie 和用户 ID 可能会过期，届时需要重新获取。
           </Paragraph>
         </Card>
       )}

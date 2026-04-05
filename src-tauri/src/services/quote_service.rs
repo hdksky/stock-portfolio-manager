@@ -705,6 +705,10 @@ fn parse_eastmoney_quote(symbol: &str, market: &str, resp: EastMoneyResponse) ->
 /// Whether the Xueqiu client has obtained a session cookie from the homepage.
 static XUEQIU_TOKEN_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
+/// User-provided Xueqiu cookie string (e.g. `xq_a_token=xxx`).
+/// When set, this replaces the auto-obtained xq_a_token in API requests.
+static XUEQIU_USER_COOKIE: Mutex<Option<String>> = Mutex::new(None);
+
 /// User-provided Xueqiu `u` cookie value (user ID from a logged-in browser session).
 /// When set, it is appended alongside `xq_a_token` in the Cookie header
 /// to authenticate kline API requests.
@@ -718,6 +722,21 @@ static XUEQIU_USER_U: Mutex<Option<String>> = Mutex::new(None);
 /// explicitly we can attach it via the `Cookie` header on every API request,
 /// guaranteeing it reaches the API regardless of cookie-jar domain matching.
 static XUEQIU_AUTO_COOKIE: Mutex<Option<String>> = Mutex::new(None);
+
+/// Set (or clear) the user-provided Xueqiu cookie string.
+pub fn set_xueqiu_user_cookie(cookie: Option<String>) {
+    let cookie = cookie
+        .as_deref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    *XUEQIU_USER_COOKIE.lock().unwrap() = cookie;
+}
+
+/// Return a clone of the current user-provided Xueqiu cookie, if any.
+fn get_xueqiu_user_cookie() -> Option<String> {
+    XUEQIU_USER_COOKIE.lock().unwrap().clone()
+}
 
 /// Set (or clear) the user-provided Xueqiu `u` cookie value.
 pub fn set_xueqiu_user_u(u_value: Option<String>) {
@@ -812,16 +831,31 @@ fn reset_xueqiu_token() {
 
 /// Build the cookie header for Xueqiu API requests.
 ///
-/// Always includes the auto-obtained `xq_a_token`.  When the user has
-/// configured a `u` cookie value (user ID), it is appended so that the
-/// kline API returns authenticated data.
+/// Priority: user-provided cookie > auto-obtained xq_a_token.
+/// When the user has configured a `u` cookie value, it is appended so
+/// that the kline API returns authenticated data.
 fn build_xueqiu_cookie_header() -> Option<String> {
+    let user_cookie = get_xueqiu_user_cookie();
     let auto_token = XUEQIU_AUTO_COOKIE.lock().unwrap().clone();
     let u_value = get_xueqiu_user_u();
 
-    match (auto_token, u_value) {
-        (Some(token), Some(u)) => Some(format!("xq_a_token={}; u={}", token, u)),
-        (Some(token), None) => Some(format!("xq_a_token={}", token)),
+    // Start with the base cookie: prefer user-provided, fall back to auto.
+    let base = if let Some(ref uc) = user_cookie {
+        Some(uc.clone())
+    } else {
+        auto_token.map(|t| format!("xq_a_token={}", t))
+    };
+
+    match (base, u_value) {
+        (Some(b), Some(u)) => {
+            // Append u= if not already present in the base cookie.
+            if b.contains(&format!("u={}", u)) {
+                Some(b)
+            } else {
+                Some(format!("{}; u={}", b, u))
+            }
+        }
+        (Some(b), None) => Some(b),
         (None, Some(u)) => Some(format!("u={}", u)),
         (None, None) => None,
     }
