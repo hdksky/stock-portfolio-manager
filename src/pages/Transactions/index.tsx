@@ -15,7 +15,7 @@ import {
   DatePicker,
   AutoComplete,
 } from "antd";
-import { PlusOutlined } from "@ant-design/icons";
+import { PlusOutlined, EditOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { invoke } from "@tauri-apps/api/core";
 import { useTransactionStore } from "../../stores/transactionStore";
@@ -36,11 +36,27 @@ const marketCurrencyMap: Record<Market, Currency> = {
   HK: "HKD",
 };
 
+// Default traded time: 1 hour after market open
+// US: 9:30 ET → 10:30 ET (use local hour 10, min 30)
+// CN: 9:30 CST → 10:30 CST (use local hour 10, min 30)
+// HK: 9:30 HKT → 10:30 HKT (use local hour 10, min 30)
+const marketDefaultTime: Record<Market, { hour: number; minute: number }> = {
+  US: { hour: 10, minute: 30 },
+  CN: { hour: 10, minute: 30 },
+  HK: { hour: 10, minute: 30 },
+};
+
+function getDefaultTradedAt(market?: Market): dayjs.Dayjs {
+  const time = market ? marketDefaultTime[market] : { hour: 10, minute: 30 };
+  return dayjs().hour(time.hour).minute(time.minute).second(0);
+}
+
 export default function TransactionsPage() {
-  const { transactions, loading, fetchTransactions, createTransaction, deleteTransaction } =
+  const { transactions, loading, fetchTransactions, createTransaction, updateTransaction, deleteTransaction } =
     useTransactionStore();
   const { accounts, fetchAccounts } = useAccountStore();
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [form] = Form.useForm();
   const [accountHoldings, setAccountHoldings] = useState<Holding[]>([]);
   const [symbolSearching, setSymbolSearching] = useState(false);
@@ -50,13 +66,14 @@ export default function TransactionsPage() {
     fetchAccounts();
   }, [fetchTransactions, fetchAccounts]);
 
-  // When account changes, set default market/currency and load holdings
+  // When account changes, set default market/currency/time and load holdings
   const handleAccountChange = useCallback(async (accountId: string) => {
     const account = accounts.find((a) => a.id === accountId);
     if (account) {
       form.setFieldsValue({
         market: account.market,
         currency: marketCurrencyMap[account.market],
+        tradedAt: getDefaultTradedAt(account.market),
       });
       try {
         const holdings = await invoke<Holding[]>("get_holdings", { accountId });
@@ -148,16 +165,52 @@ export default function TransactionsPage() {
     notes?: string;
   }) => {
     try {
-      await createTransaction({
-        ...values,
-        tradedAt: values.tradedAt.toISOString(),
-      });
-      message.success("交易记录添加成功");
+      if (editingTransaction) {
+        await updateTransaction({
+          id: editingTransaction.id,
+          ...values,
+          tradedAt: values.tradedAt.toISOString(),
+        });
+        message.success("交易记录更新成功");
+      } else {
+        await createTransaction({
+          ...values,
+          tradedAt: values.tradedAt.toISOString(),
+        });
+        message.success("交易记录添加成功");
+      }
       setModalOpen(false);
+      setEditingTransaction(null);
       form.resetFields();
     } catch (err) {
       message.error(`操作失败: ${err}`);
     }
+  };
+
+  const handleEdit = async (record: Transaction) => {
+    setEditingTransaction(record);
+    // Load holdings for the account
+    try {
+      const holdings = await invoke<Holding[]>("get_holdings", { accountId: record.account_id });
+      setAccountHoldings(holdings);
+    } catch {
+      setAccountHoldings([]);
+    }
+    form.setFieldsValue({
+      accountId: record.account_id,
+      symbol: record.symbol,
+      name: record.name,
+      market: record.market,
+      transactionType: record.transaction_type,
+      shares: record.shares,
+      price: record.price,
+      totalAmount: record.total_amount,
+      commission: record.commission,
+      currency: record.currency,
+      tradedAt: dayjs(record.traded_at),
+      notes: record.notes,
+    });
+    setModalOpen(true);
   };
 
   const handleDelete = async (id: string) => {
@@ -227,16 +280,26 @@ export default function TransactionsPage() {
       title: "操作",
       key: "action",
       render: (_: unknown, record: Transaction) => (
-        <Popconfirm
-          title="确认删除该交易记录？"
-          onConfirm={() => handleDelete(record.id)}
-          okText="确认"
-          cancelText="取消"
-        >
-          <Button type="link" size="small" danger>
-            删除
+        <Space>
+          <Button
+            type="link"
+            size="small"
+            icon={<EditOutlined />}
+            onClick={() => handleEdit(record)}
+          >
+            编辑
           </Button>
-        </Popconfirm>
+          <Popconfirm
+            title="确认删除该交易记录？"
+            onConfirm={() => handleDelete(record.id)}
+            okText="确认"
+            cancelText="取消"
+          >
+            <Button type="link" size="small" danger>
+              删除
+            </Button>
+          </Popconfirm>
+        </Space>
       ),
     },
   ];
@@ -251,6 +314,7 @@ export default function TransactionsPage() {
           type="primary"
           icon={<PlusOutlined />}
           onClick={() => {
+            setEditingTransaction(null);
             form.resetFields();
             setAccountHoldings([]);
             setModalOpen(true);
@@ -269,11 +333,12 @@ export default function TransactionsPage() {
       />
 
       <Modal
-        title="录入交易记录"
+        title={editingTransaction ? "编辑交易记录" : "录入交易记录"}
         open={modalOpen}
         onOk={() => form.submit()}
         onCancel={() => {
           setModalOpen(false);
+          setEditingTransaction(null);
           form.resetFields();
           setAccountHoldings([]);
         }}
@@ -282,7 +347,7 @@ export default function TransactionsPage() {
         width={640}
       >
         <Form form={form} layout="vertical" onFinish={handleSubmit}
-          initialValues={{ tradedAt: dayjs(), commission: 0 }}>
+          initialValues={{ tradedAt: getDefaultTradedAt(), commission: 0 }}>
           <Form.Item name="accountId" label="证券账户"
             rules={[{ required: true, message: "请选择账户" }]}>
             <Select placeholder="选择证券账户" onChange={handleAccountChange}>
@@ -327,7 +392,7 @@ export default function TransactionsPage() {
           </Form.Item>
           <Form.Item name="shares" label="交易股数"
             rules={[{ required: true, message: "请输入交易股数" }]}>
-            <InputNumber min={0} precision={2} style={{ width: "100%" }}
+            <InputNumber min={1} precision={0} style={{ width: "100%" }}
               onChange={handleAmountFieldChange} />
           </Form.Item>
           <Form.Item name="price" label="成交价格"
