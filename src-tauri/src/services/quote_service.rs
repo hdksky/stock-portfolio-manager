@@ -771,6 +771,14 @@ async fn ensure_xueqiu_token() -> Result<(), String> {
         return Ok(());
     }
 
+    // If a user-provided cookie is configured, skip the homepage visit
+    // entirely – authentication is handled via the explicit Cookie header
+    // built in build_xueqiu_cookie_header().
+    if get_xueqiu_user_cookie().is_some() {
+        XUEQIU_TOKEN_INITIALIZED.store(true, Ordering::SeqCst);
+        return Ok(());
+    }
+
     let client = http_client::xueqiu_client();
     let resp = client
         .get("https://xueqiu.com")
@@ -834,6 +842,10 @@ fn reset_xueqiu_token() {
 /// Priority: user-provided cookie > auto-obtained xq_a_token.
 /// When the user has configured a `u` cookie value, it is appended so
 /// that the kline API returns authenticated data.
+///
+/// The user may enter either the raw `xq_a_token` value (e.g. `6a7dc04b...`)
+/// or a full cookie string (e.g. `xq_a_token=6a7dc04b...`).  Both forms are
+/// handled correctly.
 fn build_xueqiu_cookie_header() -> Option<String> {
     let user_cookie = get_xueqiu_user_cookie();
     let auto_token = XUEQIU_AUTO_COOKIE.lock().unwrap().clone();
@@ -841,7 +853,12 @@ fn build_xueqiu_cookie_header() -> Option<String> {
 
     // Start with the base cookie: prefer user-provided, fall back to auto.
     let base = if let Some(ref uc) = user_cookie {
-        Some(uc.clone())
+        // If the user entered a raw token value (no '=' sign), wrap it.
+        if uc.contains('=') {
+            Some(uc.clone())
+        } else {
+            Some(format!("xq_a_token={}", uc))
+        }
     } else {
         auto_token.map(|t| format!("xq_a_token={}", t))
     };
