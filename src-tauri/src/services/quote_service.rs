@@ -2886,7 +2886,7 @@ mod tests {
         for item in &items {
             let ts_ms = item
                 .get(ts_idx)
-                .and_then(|v| v.as_i64().or_else(|| v.as_f64().map(|f| f as i64)));
+                .and_then(|v| v.as_i64().or_else(|| v.as_f64().map(|f| f.round() as i64)));
             let close = item.get(close_idx).and_then(|v| v.as_f64());
             if let (Some(ts_ms), Some(close_price)) = (ts_ms, close) {
                 if let Some(dt) = chrono::DateTime::from_timestamp(ts_ms / 1000, 0) {
