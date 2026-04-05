@@ -1,9 +1,9 @@
 [package]
 name = "stock-portfolio-manager"
-version = "0.2.1"
+version = "0.6.0"
 description = "Stock Portfolio Manager"
 authors = []
-edition = "2021"
+edition = "2026"
 
 [[bin]]
 name = "stock-portfolio-manager"
