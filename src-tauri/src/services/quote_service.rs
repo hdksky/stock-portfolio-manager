@@ -1461,33 +1461,17 @@ pub async fn fetch_stock_history_xueqiu(
             let client = http_client::xueqiu_client();
             let mut req = client.get(&url);
 
-            // Attach cookie – for kline API we need the full cookie string
-            // (not just xq_a_token). The user-provided cookie may be:
-            //   1. A full cookie string with multiple cookies separated by "; "
-            //   2. Just the xq_a_token value
-            //   3. "xq_a_token=<value>"
-            // We pass whatever the user provided as-is if it looks like a full
-            // cookie string (contains ";" or multiple "=").
-            let cookie_header: Option<String>;
-            if let Some(ref cookie) = get_xueqiu_user_cookie() {
-                // If the user supplied a full cookie string (contains ";"),
-                // use it verbatim.  Otherwise treat it as just xq_a_token.
-                let hv = if cookie.contains(';') || cookie.contains("xq_id_token") || cookie.contains("xq_r_token") {
-                    cookie.clone()
-                } else if cookie.starts_with("xq_a_token=") {
-                    cookie.clone()
-                } else {
-                    format!("xq_a_token={}", cookie)
-                };
-                req = req.header(reqwest::header::COOKIE, &hv);
-                cookie_header = Some(hv);
-            } else if let Some(ref auto_token) = *XUEQIU_AUTO_COOKIE.lock().unwrap() {
-                let hv = format!("xq_a_token={}", auto_token);
-                req = req.header(reqwest::header::COOKIE, &hv);
-                cookie_header = Some(hv);
-            } else {
-                cookie_header = None;
-            }
+            // TEMPORARY HARDCODED COOKIES FOR TESTING
+            // Testing whether the kline API requires the full set of cookies
+            // (xq_a_token + xq_id_token + xq_r_token + xqat + u) rather
+            // than just xq_a_token.
+            let hardcoded_cookie = "xq_a_token=6a7dc04b2c6770dc8e3f21e3d334831ca6192560; \
+                xq_id_token=eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJ1aWQiOjkwOTU4OTA2OTcsImlzcyI6InVjIiwiZXhwIjoxNzc2OTI5NTg0LCJjdG0iOjE3NzQzMzc2Mjg3MjEsImNpZCI6ImQ5ZDBuNEFadXAifQ.BNGh2OqeZcWfT3LS7th5alyuU5gVRU4-kipzFx0ex0x_b8DMgiglKGGM-yWrVOyJo-yWsM8QX3tqH59AQbvNb4t7upfrpcypSkB7yeJ8eS5-fr39RLVToYMyT2pRlAkU6NAM_jQms5_XijsOSaLy1RbzrHbHcM7SIDM7M0h9ZI8XjHrIPQ6PN4BluE2IFgllptH8qf4XUzA00Gwm8n2cAdCUW1tkR5eDz1555Z2_5s1WnLYuWBGItYNUNsgPpMw81ROIGIURaCndrv168W2kilKDUIsmdJvVVrnaBNaTajQd5neA8RVvDOOkvbzoQHllbLS8zWk0xTHZZfm5Ltko1Q; \
+                xq_r_token=5f1c93d4453297dd81c951d2b629160b60659c89; \
+                xqat=6a7dc04b2c6770dc8e3f21e3d334831ca6192560; \
+                u=9095890697";
+            req = req.header(reqwest::header::COOKIE, hardcoded_cookie);
+            let cookie_header: Option<String> = Some(hardcoded_cookie.to_string());
 
             // Build the final request so we can log ALL its headers.
             let built_req = req.build().map_err(|e| {
