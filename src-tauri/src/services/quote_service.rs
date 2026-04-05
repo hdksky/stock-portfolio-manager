@@ -1453,10 +1453,10 @@ pub async fn fetch_stock_history_xueqiu(
     for item in &items {
         // Xueqiu may return timestamps as JSON floats (e.g. 1692892800000.0)
         // instead of integers, so try as_i64() first, then fall back to
-        // as_f64() with a cast.
+        // as_f64() with rounding.
         let ts_ms = item
             .get(ts_idx)
-            .and_then(|v| v.as_i64().or_else(|| v.as_f64().map(|f| f as i64)));
+            .and_then(|v| v.as_i64().or_else(|| v.as_f64().map(|f| f.round() as i64)));
         let close = item.get(close_idx).and_then(|v| v.as_f64());
 
         if let (Some(ts_ms), Some(close_price)) = (ts_ms, close) {

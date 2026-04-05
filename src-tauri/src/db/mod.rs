@@ -244,6 +244,10 @@ impl Database {
         let _ = conn.execute_batch("
             ALTER TABLE quote_provider_config ADD COLUMN xueqiu_u TEXT;
         ");
+        // Migrate existing data from the old column to the new one.
+        let _ = conn.execute_batch("
+            UPDATE quote_provider_config SET xueqiu_u = xueqiu_cookie WHERE xueqiu_cookie IS NOT NULL AND xueqiu_u IS NULL;
+        ");
 
         conn.execute_batch("
             CREATE TABLE IF NOT EXISTS ai_config (
