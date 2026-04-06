@@ -254,6 +254,11 @@ fn fetch_transaction_dates(
 /// When `inception_value` is provided, cumulative returns are calculated
 /// relative to this value (the portfolio value at creation) instead of the
 /// first element in `daily_values`.
+///
+/// **Note:** The returned `daily_return` and `cumulative_return` fields are
+/// already in **percentage** form (e.g. 1.5 means 1.5%). Callers that need
+/// decimal returns (e.g. for volatility or Sharpe calculations) must divide
+/// by 100.
 pub fn build_return_series(
     daily_values: &[(NaiveDate, f64, f64)],
     inception_value: Option<f64>,
@@ -440,7 +445,9 @@ pub fn get_performance_summary(
     let return_series = build_return_series(&daily, inception_value);
     let dd_analysis = calculate_max_drawdown(&return_series);
 
-    let daily_returns: Vec<f64> = return_series.iter().map(|r| r.daily_return).collect();
+    // daily_return values from build_return_series are already in percentage
+    // form (e.g. 1.5 means 1.5%), so convert to decimal for volatility/Sharpe.
+    let daily_returns: Vec<f64> = return_series.iter().map(|r| r.daily_return / 100.0).collect();
     let (_daily_vol, ann_vol) = calculate_volatility(&daily_returns);
     let sharpe = calculate_sharpe(annualised, RISK_FREE_RATE, ann_vol);
 
@@ -480,6 +487,11 @@ fn compute_twr(
     // Build a date->value map for quick look-up
     let value_map: std::collections::HashMap<NaiveDate, f64> =
         daily.iter().map(|(d, v, _)| (*d, *v)).collect();
+
+    // Only keep boundary dates that have actual portfolio values.
+    // Transaction dates without a corresponding snapshot would default to 0.0,
+    // producing a spurious -100% sub-period return.
+    sorted_boundaries.retain(|d| value_map.contains_key(d));
 
     let mut periods: Vec<SubPeriod> = Vec::new();
 
@@ -538,7 +550,9 @@ pub fn get_risk_metrics(
 
     let inception_value = fetch_inception_value(db, filter)?;
     let return_series = build_return_series(&daily, inception_value);
-    let daily_returns: Vec<f64> = return_series.iter().map(|r| r.daily_return).collect();
+    // daily_return values from build_return_series are already in percentage
+    // form (e.g. 1.5 means 1.5%), so convert to decimal for volatility/Sharpe.
+    let daily_returns: Vec<f64> = return_series.iter().map(|r| r.daily_return / 100.0).collect();
     let (daily_vol, ann_vol) = calculate_volatility(&daily_returns);
 
     let sharpe = calculate_sharpe(annualised, RISK_FREE_RATE, ann_vol);

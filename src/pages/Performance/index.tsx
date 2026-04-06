@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { Button, Card, Col, Divider, Row, Select, Space, Typography } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import { usePerformanceStore } from "../../stores/performanceStore";
@@ -11,6 +11,7 @@ import AttributionChart from "./AttributionChart";
 import MonthlyReturnsTable from "./MonthlyReturnsTable";
 import RankingChart from "./RankingChart";
 import RiskMetricsPanel from "./RiskMetricsPanel";
+import type { Market } from "../../types";
 
 const { Title } = Typography;
 
@@ -19,6 +20,12 @@ const MARKETS = [
   { value: "CN", label: "🇨🇳 A股" },
   { value: "HK", label: "🇭🇰 港股" },
 ];
+
+const MARKET_CURRENCY: Record<Market, string> = {
+  US: "USD",
+  CN: "CNY",
+  HK: "HKD",
+};
 
 export default function PerformancePage() {
   const {
@@ -46,6 +53,18 @@ export default function PerformancePage() {
   } = usePerformanceStore();
 
   const { accounts, fetchAccounts } = useAccountStore();
+
+  // Derive currency from the selected account or market filter
+  const currency = useMemo(() => {
+    if (selectedAccountId) {
+      const account = accounts.find((a) => a.id === selectedAccountId);
+      if (account) return MARKET_CURRENCY[account.market] ?? "USD";
+    }
+    if (selectedMarket) {
+      return MARKET_CURRENCY[selectedMarket as Market] ?? "USD";
+    }
+    return "USD";
+  }, [selectedAccountId, selectedMarket, accounts]);
 
   useEffect(() => {
     fetchAccounts();
@@ -138,7 +157,7 @@ export default function PerformancePage() {
       </div>
 
       {/* Summary cards */}
-      <PerformanceSummaryCards summary={summary} loading={loading} />
+      <PerformanceSummaryCards summary={summary} loading={loading} currency={currency} />
 
       <Divider />
 
