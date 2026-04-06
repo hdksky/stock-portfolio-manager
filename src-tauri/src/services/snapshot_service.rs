@@ -488,9 +488,14 @@ pub async fn backfill_snapshots(
 
     let config = quote_provider_service::get_quote_provider_config(db)?;
 
-    // Fetch a few extra days before start_date so that forward-fill can cover
-    // holidays / non-trading days at the beginning of the analysis period.
-    let fetch_start = start_date - chrono::Duration::days(14);
+    // Narrow the fetch window to cover only the missing dates.  When most
+    // snapshots are already cached (e.g. a new day just started), this avoids
+    // re-fetching weeks of historical prices that are already in the DB.
+    // The 14-day look-back before the earliest missing date provides enough
+    // data for forward-fill on market holidays / non-trading days.
+    let earliest_missing = missing_dates.first().copied().unwrap_or(start_date);
+    let fetch_start = earliest_missing - chrono::Duration::days(14);
+    let fetch_end = missing_dates.last().copied().unwrap_or(end_date);
 
     // Deduplicate symbols – multiple accounts may hold the same stock;
     // we only need to fetch historical prices once per unique symbol.
@@ -527,7 +532,7 @@ pub async fn backfill_snapshots(
             symbol,
             market,
             fetch_start,
-            end_date,
+            fetch_end,
             provider,
         )
         .await
