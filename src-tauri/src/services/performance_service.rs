@@ -28,6 +28,23 @@ impl PerformanceFilter {
     pub fn is_active(&self) -> bool {
         self.market.is_some() || self.account_id.is_some()
     }
+
+    /// Append optional WHERE clauses for market/account_id and push
+    /// corresponding parameter values. Returns the number of params added.
+    fn append_where_clauses(
+        &self,
+        sql: &mut String,
+        params: &mut Vec<Box<dyn rusqlite::types::ToSql>>,
+    ) {
+        if let Some(ref market) = self.market {
+            sql.push_str(&format!(" AND market = ?{}", params.len() + 1));
+            params.push(Box::new(market.clone()));
+        }
+        if let Some(ref account_id) = self.account_id {
+            sql.push_str(&format!(" AND account_id = ?{}", params.len() + 1));
+            params.push(Box::new(account_id.clone()));
+        }
+    }
 }
 
 /// Fetch daily portfolio values (total_value, daily_pnl) for the date range.
@@ -96,22 +113,7 @@ fn fetch_filtered_daily_values(
         Box::new(end_str),
     ];
 
-    if let Some(ref market) = filter.market {
-        sql.push_str(" AND market = ?");
-        sql = sql.replace(
-            " AND market = ?",
-            &format!(" AND market = ?{}", params.len() + 1),
-        );
-        params.push(Box::new(market.clone()));
-    }
-    if let Some(ref account_id) = filter.account_id {
-        sql.push_str(" AND account_id = ?");
-        sql = sql.replace(
-            " AND account_id = ?",
-            &format!(" AND account_id = ?{}", params.len() + 1),
-        );
-        params.push(Box::new(account_id.clone()));
-    }
+    filter.append_where_clauses(&mut sql, &mut params);
 
     sql.push_str(" GROUP BY date ORDER BY date ASC");
 
@@ -147,24 +149,10 @@ fn fetch_inception_value(db: &Database, filter: &PerformanceFilter) -> Result<Op
             "SELECT SUM(market_value) FROM daily_holding_snapshots WHERE date = (SELECT MIN(date) FROM daily_holding_snapshots WHERE 1=1",
         );
         let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
-        if let Some(ref market) = filter.market {
-            sql.push_str(&format!(" AND market = ?{}", params.len() + 1));
-            params.push(Box::new(market.clone()));
-        }
-        if let Some(ref account_id) = filter.account_id {
-            sql.push_str(&format!(" AND account_id = ?{}", params.len() + 1));
-            params.push(Box::new(account_id.clone()));
-        }
+        filter.append_where_clauses(&mut sql, &mut params);
         sql.push(')');
         // Apply same filters to outer WHERE
-        if let Some(ref market) = filter.market {
-            sql.push_str(&format!(" AND market = ?{}", params.len() + 1));
-            params.push(Box::new(market.clone()));
-        }
-        if let Some(ref account_id) = filter.account_id {
-            sql.push_str(&format!(" AND account_id = ?{}", params.len() + 1));
-            params.push(Box::new(account_id.clone()));
-        }
+        filter.append_where_clauses(&mut sql, &mut params);
         let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
         let result = conn
             .query_row(&sql, param_refs.as_slice(), |row| row.get::<_, f64>(0))
@@ -189,24 +177,10 @@ fn fetch_previous_day_value(db: &Database, date: NaiveDate, filter: &Performance
             "SELECT SUM(market_value) FROM daily_holding_snapshots WHERE date = (SELECT MAX(date) FROM daily_holding_snapshots WHERE date < ?1",
         );
         let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(date_str.clone())];
-        if let Some(ref market) = filter.market {
-            sql.push_str(&format!(" AND market = ?{}", params.len() + 1));
-            params.push(Box::new(market.clone()));
-        }
-        if let Some(ref account_id) = filter.account_id {
-            sql.push_str(&format!(" AND account_id = ?{}", params.len() + 1));
-            params.push(Box::new(account_id.clone()));
-        }
+        filter.append_where_clauses(&mut sql, &mut params);
         sql.push(')');
         // Apply same filters to outer WHERE
-        if let Some(ref market) = filter.market {
-            sql.push_str(&format!(" AND market = ?{}", params.len() + 1));
-            params.push(Box::new(market.clone()));
-        }
-        if let Some(ref account_id) = filter.account_id {
-            sql.push_str(&format!(" AND account_id = ?{}", params.len() + 1));
-            params.push(Box::new(account_id.clone()));
-        }
+        filter.append_where_clauses(&mut sql, &mut params);
         let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
         let result = conn
             .query_row(&sql, param_refs.as_slice(), |row| row.get::<_, f64>(0))
@@ -593,18 +567,6 @@ pub fn get_return_attribution(
     let start_str = start_date.format("%Y-%m-%d").to_string();
     let end_str = end_date.format("%Y-%m-%d").to_string();
 
-    // Build WHERE clause fragments for optional filters
-    let mut extra_where = String::new();
-    let mut extra_params: Vec<String> = Vec::new();
-    if let Some(ref market) = filter.market {
-        extra_where.push_str(" AND market = ?MKTPARAM");
-        extra_params.push(market.clone());
-    }
-    if let Some(ref account_id) = filter.account_id {
-        extra_where.push_str(" AND account_id = ?ACCTPARAM");
-        extra_params.push(account_id.clone());
-    }
-
     // Get start and end snapshots aggregated by symbol
     let mut start_vals: std::collections::HashMap<String, (String, String, f64)> =
         std::collections::HashMap::new();
@@ -612,32 +574,19 @@ pub fn get_return_attribution(
         std::collections::HashMap::new();
 
     {
-        // Build start query
-        let sub_where = extra_where
-            .replace("?MKTPARAM", "?2")
-            .replace("?ACCTPARAM", &format!("?{}", if filter.market.is_some() { 3 } else { 2 }));
-        let outer_offset = 1 + extra_params.len();
-        let outer_where = extra_where
-            .replace("?MKTPARAM", &format!("?{}", outer_offset + 1))
-            .replace("?ACCTPARAM", &format!("?{}", outer_offset + if filter.market.is_some() { 2 } else { 1 }));
-        let sql = format!(
+        // Build start query with filters applied to both subquery and outer query
+        let mut sql = String::from(
             "SELECT symbol, market, COALESCE(category_name, '未分类'), SUM(market_value)
              FROM daily_holding_snapshots
              WHERE date = (
-                 SELECT MAX(date) FROM daily_holding_snapshots WHERE date <= ?1{}
-             ){}
-             GROUP BY symbol",
-            sub_where, outer_where
+                 SELECT MAX(date) FROM daily_holding_snapshots WHERE date <= ?1",
         );
-        let mut all_params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
-        all_params.push(Box::new(start_str.clone()));
-        for p in &extra_params {
-            all_params.push(Box::new(p.clone()));
-        }
-        for p in &extra_params {
-            all_params.push(Box::new(p.clone()));
-        }
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> = all_params.iter().map(|p| p.as_ref()).collect();
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(start_str.clone())];
+        filter.append_where_clauses(&mut sql, &mut params);
+        sql.push(')');
+        filter.append_where_clauses(&mut sql, &mut params);
+        sql.push_str(" GROUP BY symbol");
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
         let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map(param_refs.as_slice(), |row| {
@@ -658,32 +607,19 @@ pub fn get_return_attribution(
     }
 
     {
-        // Build end query
-        let sub_where = extra_where
-            .replace("?MKTPARAM", "?2")
-            .replace("?ACCTPARAM", &format!("?{}", if filter.market.is_some() { 3 } else { 2 }));
-        let outer_offset = 1 + extra_params.len();
-        let outer_where = extra_where
-            .replace("?MKTPARAM", &format!("?{}", outer_offset + 1))
-            .replace("?ACCTPARAM", &format!("?{}", outer_offset + if filter.market.is_some() { 2 } else { 1 }));
-        let sql = format!(
+        // Build end query with filters applied to both subquery and outer query
+        let mut sql = String::from(
             "SELECT symbol, SUM(market_value)
              FROM daily_holding_snapshots
              WHERE date = (
-                 SELECT MAX(date) FROM daily_holding_snapshots WHERE date <= ?1{}
-             ){}
-             GROUP BY symbol",
-            sub_where, outer_where
+                 SELECT MAX(date) FROM daily_holding_snapshots WHERE date <= ?1",
         );
-        let mut all_params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
-        all_params.push(Box::new(end_str.clone()));
-        for p in &extra_params {
-            all_params.push(Box::new(p.clone()));
-        }
-        for p in &extra_params {
-            all_params.push(Box::new(p.clone()));
-        }
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> = all_params.iter().map(|p| p.as_ref()).collect();
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(end_str.clone())];
+        filter.append_where_clauses(&mut sql, &mut params);
+        sql.push(')');
+        filter.append_where_clauses(&mut sql, &mut params);
+        sql.push_str(" GROUP BY symbol");
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
         let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map(param_refs.as_slice(), |row| {
@@ -883,18 +819,6 @@ pub fn get_holding_performance_ranking(
     let start_str = start_date.format("%Y-%m-%d").to_string();
     let end_str = end_date.format("%Y-%m-%d").to_string();
 
-    // Build WHERE clause fragments for optional filters
-    let mut extra_where = String::new();
-    let mut extra_params: Vec<String> = Vec::new();
-    if let Some(ref market) = filter.market {
-        extra_where.push_str(" AND market = ?MKTPARAM");
-        extra_params.push(market.clone());
-    }
-    if let Some(ref account_id) = filter.account_id {
-        extra_where.push_str(" AND account_id = ?ACCTPARAM");
-        extra_params.push(account_id.clone());
-    }
-
     // Collect per-symbol start and end values from snapshots
     struct SnapRow {
         symbol: String,
@@ -904,31 +828,18 @@ pub fn get_holding_performance_ranking(
     }
 
     let fetch_snap = |date_param: &str| -> Result<Vec<SnapRow>, String> {
-        let sub_where = extra_where
-            .replace("?MKTPARAM", "?2")
-            .replace("?ACCTPARAM", &format!("?{}", if filter.market.is_some() { 3 } else { 2 }));
-        let outer_offset = 1 + extra_params.len();
-        let outer_where = extra_where
-            .replace("?MKTPARAM", &format!("?{}", outer_offset + 1))
-            .replace("?ACCTPARAM", &format!("?{}", outer_offset + if filter.market.is_some() { 2 } else { 1 }));
-        let sql = format!(
+        let mut sql = String::from(
             "SELECT symbol, market, COALESCE(category_name, '未分类'), SUM(market_value)
              FROM daily_holding_snapshots
              WHERE date = (
-                 SELECT MAX(date) FROM daily_holding_snapshots WHERE date <= ?1{}
-             ){}
-             GROUP BY symbol",
-            sub_where, outer_where
+                 SELECT MAX(date) FROM daily_holding_snapshots WHERE date <= ?1",
         );
-        let mut all_params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
-        all_params.push(Box::new(date_param.to_string()));
-        for p in &extra_params {
-            all_params.push(Box::new(p.clone()));
-        }
-        for p in &extra_params {
-            all_params.push(Box::new(p.clone()));
-        }
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> = all_params.iter().map(|p| p.as_ref()).collect();
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(date_param.to_string())];
+        filter.append_where_clauses(&mut sql, &mut params);
+        sql.push(')');
+        filter.append_where_clauses(&mut sql, &mut params);
+        sql.push_str(" GROUP BY symbol");
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
         let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map(param_refs.as_slice(), |row| {
