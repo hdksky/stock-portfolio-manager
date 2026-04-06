@@ -254,6 +254,11 @@ fn fetch_transaction_dates(
 /// When `inception_value` is provided, cumulative returns are calculated
 /// relative to this value (the portfolio value at creation) instead of the
 /// first element in `daily_values`.
+///
+/// **Note:** The returned `daily_return` and `cumulative_return` fields are
+/// already in **percentage** form (e.g. 1.5 means 1.5%). Callers that need
+/// decimal returns (e.g. for volatility or Sharpe calculations) must divide
+/// by 100.
 pub fn build_return_series(
     daily_values: &[(NaiveDate, f64, f64)],
     inception_value: Option<f64>,

@@ -454,20 +454,18 @@ pub async fn backfill_snapshots(
     };
 
     let mut missing_dates: Vec<NaiveDate> = Vec::new();
-    // Collect transaction dates in the range so we can force re-creation of
-    // their snapshots (a previous transaction-unaware backfill may have stored
-    // incorrect values for those dates and neighbours).
-    let tx_date_set: std::collections::HashSet<NaiveDate> =
-        transactions.iter().map(|tx| tx.trade_date).collect();
+    // If there are transactions in the period, force re-creation of ALL
+    // snapshots. A transaction on any date D changes the adjusted holdings
+    // for every date before D (they had different shares), so ALL dates in
+    // the range could have stale snapshots from a previous backfill that
+    // didn't account for transactions.
+    let has_transactions = transactions.iter().any(|tx| tx.trade_date <= end_date);
     let mut d = start_date;
     while d <= end_date {
         let wd = d.weekday();
         if wd != chrono::Weekday::Sat && wd != chrono::Weekday::Sun {
             let ds = d.format("%Y-%m-%d").to_string();
-            // Include the date if no snapshot exists, OR if there are
-            // transactions in the period (previous snapshots may be stale
-            // from a transaction-unaware backfill).
-            if !existing_dates.contains(&ds) || !tx_date_set.is_empty() {
+            if !existing_dates.contains(&ds) || has_transactions {
                 missing_dates.push(d);
             }
         }
