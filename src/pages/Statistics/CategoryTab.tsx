@@ -5,17 +5,15 @@ import HoldingsTable from "../Dashboard/HoldingsTable";
 import { useStatisticsStore } from "../../stores/dashboardStore";
 import { useCategoryStore } from "../../stores/categoryStore";
 import type { CategoryStatistics } from "../../types";
+import { usePnlColor } from "../../hooks/usePnlColor";
 
 interface Props {
   selectedCategoryId: string;
   onCategoryChange: (id: string) => void;
 }
 
-function pnlColor(pnl: number) {
-  return pnl >= 0 ? "#22C55E" : "#EF4444";
-}
-
 export default function CategoryTab({ selectedCategoryId, onCategoryChange }: Props) {
+  const { pnlColor } = usePnlColor();
   const { categoryStats, fetchCategoryStats } = useStatisticsStore();
   const { categories, fetchCategories } = useCategoryStore();
 

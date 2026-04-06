@@ -1,6 +1,7 @@
 import ReactECharts from "echarts-for-react";
 import { Tabs, Typography } from "antd";
 import type { ReturnAttribution, AttributionItem } from "../../types";
+import { usePnlColor } from "../../hooks/usePnlColor";
 
 const { Text } = Typography;
 
@@ -9,11 +10,11 @@ interface Props {
   height?: number;
 }
 
-function makeWaterfallOption(items: AttributionItem[], title: string) {
+function makeWaterfallOption(items: AttributionItem[], title: string, colorFn: (v: number) => string) {
   const sorted = [...items].sort((a, b) => b.pnl - a.pnl);
   const names = sorted.map((i) => i.name);
   const values = sorted.map((i) => parseFloat(i.pnl.toFixed(2)));
-  const colors = values.map((v) => (v >= 0 ? "#3f8600" : "#cf1322"));
+  const colors = values.map((v) => colorFn(v));
 
   return {
     title: { text: title, textStyle: { fontSize: 13 } },
@@ -42,6 +43,7 @@ function makeWaterfallOption(items: AttributionItem[], title: string) {
 }
 
 export default function AttributionChart({ attribution, height = 300 }: Props) {
+  const { pnlColorDark } = usePnlColor();
   if (!attribution) {
     return (
       <div className="flex items-center justify-center" style={{ height }}>
@@ -56,7 +58,7 @@ export default function AttributionChart({ attribution, height = 300 }: Props) {
       label: "按市场",
       children: (
         <ReactECharts
-          option={makeWaterfallOption(attribution.by_market, "市场收益贡献")}
+          option={makeWaterfallOption(attribution.by_market, "市场收益贡献", pnlColorDark)}
           style={{ height, width: "100%" }}
           opts={{ renderer: "canvas" }}
         />
@@ -67,7 +69,7 @@ export default function AttributionChart({ attribution, height = 300 }: Props) {
       label: "按类别",
       children: (
         <ReactECharts
-          option={makeWaterfallOption(attribution.by_category, "类别收益贡献")}
+          option={makeWaterfallOption(attribution.by_category, "类别收益贡献", pnlColorDark)}
           style={{ height, width: "100%" }}
           opts={{ renderer: "canvas" }}
         />
@@ -78,7 +80,7 @@ export default function AttributionChart({ attribution, height = 300 }: Props) {
       label: "按个股",
       children: (
         <ReactECharts
-          option={makeWaterfallOption(attribution.by_holding.slice(0, 20), "个股收益贡献 (Top 20)")}
+          option={makeWaterfallOption(attribution.by_holding.slice(0, 20), "个股收益贡献 (Top 20)", pnlColorDark)}
           style={{ height, width: "100%" }}
           opts={{ renderer: "canvas" }}
         />

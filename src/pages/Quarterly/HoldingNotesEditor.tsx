@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import MDEditor from "@uiw/react-md-editor";
 import type { HoldingNoteHistory, QuarterlyHoldingSnapshot } from "../../types";
 import { useQuarterlyStore } from "../../stores/quarterlyStore";
+import { usePnlColor } from "../../hooks/usePnlColor";
 
 const { Text } = Typography;
 
@@ -35,6 +36,7 @@ export default function HoldingNotesEditor({
   showHistory,
 }: Props) {
   const { updateHoldingNotes } = useQuarterlyStore();
+  const { pnlColorDark } = usePnlColor();
   const [notes, setNotes] = useState(holding?.notes ?? "");
   const [history, setHistory] = useState<HoldingNoteHistory[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -125,7 +127,7 @@ export default function HoldingNotesEditor({
         <Descriptions.Item label="均成本">{holding.avg_cost.toFixed(4)}</Descriptions.Item>
         <Descriptions.Item label="收盘价">{holding.close_price.toFixed(4)}</Descriptions.Item>
         <Descriptions.Item label="盈亏%">
-          <Text style={{ color: holding.pnl_percent >= 0 ? "#3f8600" : "#cf1322" }}>
+          <Text style={{ color: pnlColorDark(holding.pnl_percent) }}>
             {holding.pnl_percent >= 0 ? "+" : ""}
             {holding.pnl_percent.toFixed(2)}%
           </Text>
@@ -173,7 +175,7 @@ export default function HoldingNotesEditor({
                     <div className="text-xs text-gray-500 mb-1">
                       {h.snapshot_date} | 持股: {h.shares} | 成本: {h.avg_cost.toFixed(4)} |
                       收盘: {h.close_price.toFixed(4)} |{" "}
-                      <span style={{ color: h.pnl_percent >= 0 ? "#3f8600" : "#cf1322" }}>
+                      <span style={{ color: pnlColorDark(h.pnl_percent) }}>
                         {h.pnl_percent >= 0 ? "+" : ""}
                         {h.pnl_percent.toFixed(2)}%
                       </span>

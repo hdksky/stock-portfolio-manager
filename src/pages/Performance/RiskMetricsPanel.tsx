@@ -1,6 +1,7 @@
 import { Card, Col, Row, Statistic, Tooltip } from "antd";
 import { InfoCircleOutlined } from "@ant-design/icons";
 import type { RiskMetrics } from "../../types";
+import { usePnlColor } from "../../hooks/usePnlColor";
 
 interface Props {
   metrics: RiskMetrics | null;
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export default function RiskMetricsPanel({ metrics, loading }: Props) {
+  const { pnlColorDark, lossColor } = usePnlColor();
   return (
     <div>
       <Row gutter={[12, 12]}>
@@ -59,7 +61,7 @@ export default function RiskMetricsPanel({ metrics, loading }: Props) {
               value={metrics?.sharpe_ratio ?? 0}
               precision={2}
               valueStyle={{
-                color: (metrics?.sharpe_ratio ?? 0) >= 1 ? "#3f8600" : (metrics?.sharpe_ratio ?? 0) >= 0 ? "#d46b08" : "#cf1322",
+                color: (metrics?.sharpe_ratio ?? 0) >= 1 ? pnlColorDark(1) : (metrics?.sharpe_ratio ?? 0) >= 0 ? "#d46b08" : pnlColorDark(-1),
               }}
             />
           </Card>
@@ -71,7 +73,7 @@ export default function RiskMetricsPanel({ metrics, loading }: Props) {
               value={Math.abs(metrics?.max_drawdown ?? 0)}
               precision={2}
               suffix="%"
-              valueStyle={{ color: "#cf1322" }}
+              valueStyle={{ color: lossColor }}
             />
           </Card>
         </Col>
@@ -89,7 +91,7 @@ export default function RiskMetricsPanel({ metrics, loading }: Props) {
               value={metrics?.calmar_ratio ?? 0}
               precision={2}
               valueStyle={{
-                color: (metrics?.calmar_ratio ?? 0) >= 1 ? "#3f8600" : "#d46b08",
+                color: (metrics?.calmar_ratio ?? 0) >= 1 ? pnlColorDark(1) : "#d46b08",
               }}
             />
           </Card>

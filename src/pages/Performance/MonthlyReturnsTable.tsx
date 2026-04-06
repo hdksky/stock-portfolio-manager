@@ -1,9 +1,8 @@
 import { Typography } from "antd";
 import type { MonthlyReturn } from "../../types";
+import { usePnlColor } from "../../hooks/usePnlColor";
 
 const { Text } = Typography;
-
-const SATURATION_THRESHOLD = 10; // % at which color is fully saturated
 
 interface Props {
   data: MonthlyReturn[];
@@ -11,18 +10,8 @@ interface Props {
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-function cellColor(rate: number): string {
-  if (rate === 0) return "transparent";
-  const intensity = Math.min(Math.abs(rate) / SATURATION_THRESHOLD, 1);
-  if (rate > 0) {
-    const g = Math.round(80 + intensity * 100);
-    return `rgba(0, ${g}, 0, ${0.15 + intensity * 0.5})`;
-  }
-  const r = Math.round(150 + intensity * 100);
-  return `rgba(${r}, 0, 0, ${0.15 + intensity * 0.5})`;
-}
-
 export default function MonthlyReturnsTable({ data }: Props) {
+  const { cellColor, pnlColorDeep } = usePnlColor();
   if (data.length === 0) {
     return <Text type="secondary">暂无月度收益数据</Text>;
   }
@@ -74,7 +63,7 @@ export default function MonthlyReturnsTable({ data }: Props) {
                         padding: "4px 8px",
                         textAlign: "center",
                         backgroundColor: rate !== null ? cellColor(rate) : "transparent",
-                        color: rate !== null ? (rate >= 0 ? "#135200" : "#820014") : "#aaa",
+                        color: rate !== null ? pnlColorDeep(rate) : "#aaa",
                         borderRadius: 4,
                       }}
                       title={rate !== null ? `${rate >= 0 ? "+" : ""}${rate.toFixed(2)}%` : "-"}
@@ -89,7 +78,7 @@ export default function MonthlyReturnsTable({ data }: Props) {
                     textAlign: "center",
                     fontWeight: "bold",
                     backgroundColor: cellColor(annualReturn[year] ?? 0),
-                    color: (annualReturn[year] ?? 0) >= 0 ? "#135200" : "#820014",
+                    color: (annualReturn[year] ?? 0) >= 0 ? pnlColorDeep(1) : pnlColorDeep(-1),
                     borderRadius: 4,
                   }}
                 >

@@ -1,6 +1,7 @@
 import ReactECharts from "echarts-for-react";
 import { Typography, Descriptions } from "antd";
 import type { DrawdownAnalysis } from "../../types";
+import { usePnlColor } from "../../hooks/usePnlColor";
 
 const { Text } = Typography;
 
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export default function DrawdownChart({ drawdown, height = 280 }: Props) {
+  const { lossColor } = usePnlColor();
   if (!drawdown || drawdown.drawdown_series.length === 0) {
     return (
       <div className="flex items-center justify-center" style={{ height }}>
@@ -50,8 +52,8 @@ export default function DrawdownChart({ drawdown, height = 280 }: Props) {
         data: values,
         smooth: true,
         symbol: "none",
-        lineStyle: { width: 1, color: "#cf1322" },
-        areaStyle: { color: "#cf1322", opacity: 0.3 },
+        lineStyle: { width: 1, color: lossColor },
+        areaStyle: { color: lossColor, opacity: 0.3 },
         markArea: {
           data: [
             [

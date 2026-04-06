@@ -1,5 +1,6 @@
 import { Card, Table, Tabs, Tag, Typography } from "antd";
 import type { HoldingChangeItem, HoldingChanges } from "../../types";
+import { usePnlColor } from "../../hooks/usePnlColor";
 
 const { Text } = Typography;
 
@@ -20,7 +21,7 @@ const MARKET_LABELS: Record<string, string> = {
   HK: "🇭🇰 港股",
 };
 
-function buildColumns(quarter1: string, quarter2: string, type: string) {
+function buildColumns(quarter1: string, quarter2: string, type: string, colorFn: (v: number) => string) {
   const base = [
     {
       title: "市场",
@@ -93,7 +94,7 @@ function buildColumns(quarter1: string, quarter2: string, type: string) {
       dataIndex: "shares_change",
       key: "shares_change",
       render: (v: number) => (
-        <Text style={{ color: v > 0 ? "#3f8600" : v < 0 ? "#cf1322" : undefined }}>
+        <Text style={{ color: v > 0 ? colorFn(v) : v < 0 ? colorFn(v) : undefined }}>
           {v > 0 ? "+" : ""}
           {v.toLocaleString()}
         </Text>
@@ -104,7 +105,7 @@ function buildColumns(quarter1: string, quarter2: string, type: string) {
       dataIndex: "value_change",
       key: "value_change",
       render: (v: number) => (
-        <Text style={{ color: v > 0 ? "#3f8600" : v < 0 ? "#cf1322" : undefined }}>
+        <Text style={{ color: v > 0 ? colorFn(v) : v < 0 ? colorFn(v) : undefined }}>
           {v > 0 ? "+" : ""}
           {fmt(v)}
         </Text>
@@ -118,11 +119,13 @@ function HoldingTable({
   quarter1,
   quarter2,
   type,
+  colorFn,
 }: {
   data: HoldingChangeItem[];
   quarter1: string;
   quarter2: string;
   type: string;
+  colorFn: (v: number) => string;
 }) {
   if (data.length === 0) {
     return <Text type="secondary">无</Text>;
@@ -130,7 +133,7 @@ function HoldingTable({
   return (
     <Table
       dataSource={data}
-      columns={buildColumns(quarter1, quarter2, type)}
+      columns={buildColumns(quarter1, quarter2, type, colorFn)}
       rowKey="symbol"
       size="small"
       pagination={false}
@@ -139,6 +142,7 @@ function HoldingTable({
 }
 
 export default function HoldingChangesTable({ changes, quarter1, quarter2, title }: Props) {
+  const { pnlColorDark } = usePnlColor();
   const tabs = [
     {
       key: "new",
@@ -154,6 +158,7 @@ export default function HoldingChangesTable({ changes, quarter1, quarter2, title
           quarter1={quarter1}
           quarter2={quarter2}
           type="new"
+          colorFn={pnlColorDark}
         />
       ),
     },
@@ -171,6 +176,7 @@ export default function HoldingChangesTable({ changes, quarter1, quarter2, title
           quarter1={quarter1}
           quarter2={quarter2}
           type="closed"
+          colorFn={pnlColorDark}
         />
       ),
     },
@@ -188,6 +194,7 @@ export default function HoldingChangesTable({ changes, quarter1, quarter2, title
           quarter1={quarter1}
           quarter2={quarter2}
           type="change"
+          colorFn={pnlColorDark}
         />
       ),
     },
@@ -205,6 +212,7 @@ export default function HoldingChangesTable({ changes, quarter1, quarter2, title
           quarter1={quarter1}
           quarter2={quarter2}
           type="change"
+          colorFn={pnlColorDark}
         />
       ),
     },
@@ -222,6 +230,7 @@ export default function HoldingChangesTable({ changes, quarter1, quarter2, title
           quarter1={quarter1}
           quarter2={quarter2}
           type="change"
+          colorFn={pnlColorDark}
         />
       ),
     },

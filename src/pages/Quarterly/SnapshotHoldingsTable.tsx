@@ -3,6 +3,7 @@ import { Button, Space, Table, Tag, Typography } from "antd";
 import { EditOutlined, HistoryOutlined } from "@ant-design/icons";
 import type { QuarterlyHoldingSnapshot } from "../../types";
 import HoldingNotesEditor from "./HoldingNotesEditor";
+import { usePnlColor } from "../../hooks/usePnlColor";
 
 const { Text } = Typography;
 
@@ -29,6 +30,7 @@ const MARKET_LABELS: Record<string, string> = {
 export default function SnapshotHoldingsTable({ holdings, snapshotId, loading }: Props) {
   const [notesTarget, setNotesTarget] = useState<QuarterlyHoldingSnapshot | null>(null);
   const [historySymbol, setHistorySymbol] = useState<string | null>(null);
+  const { pnlColorDark } = usePnlColor();
 
   const columns = [
     {
@@ -99,7 +101,7 @@ export default function SnapshotHoldingsTable({ holdings, snapshotId, loading }:
       dataIndex: "pnl",
       key: "pnl",
       render: (v: number) => (
-        <Text style={{ color: v >= 0 ? "#3f8600" : "#cf1322" }}>
+        <Text style={{ color: pnlColorDark(v) }}>
           {v >= 0 ? "+" : ""}{fmt(v)}
         </Text>
       ),
@@ -110,7 +112,7 @@ export default function SnapshotHoldingsTable({ holdings, snapshotId, loading }:
       dataIndex: "pnl_percent",
       key: "pnl_percent",
       render: (v: number) => (
-        <Text style={{ color: v >= 0 ? "#3f8600" : "#cf1322" }}>{fmtPct(v)}</Text>
+        <Text style={{ color: pnlColorDark(v) }}>{fmtPct(v)}</Text>
       ),
       sorter: (a: QuarterlyHoldingSnapshot, b: QuarterlyHoldingSnapshot) =>
         a.pnl_percent - b.pnl_percent,

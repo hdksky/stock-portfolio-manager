@@ -1,6 +1,7 @@
 import { Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { HoldingDetail } from "../../types";
+import { usePnlColor } from "../../hooks/usePnlColor";
 
 const { Text } = Typography;
 
@@ -25,6 +26,7 @@ function fmtMoney(value: number, currency: string) {
 }
 
 export default function HoldingsTable({ holdings, loading }: Props) {
+  const { pnlColor } = usePnlColor();
   const columns: ColumnsType<HoldingDetail> = [
     {
       title: "代码",
@@ -120,7 +122,7 @@ export default function HoldingsTable({ holdings, loading }: Props) {
       key: "pnl",
       sorter: (a, b) => a.pnl - b.pnl,
       render: (pnl: number, record: HoldingDetail) => (
-        <span style={{ color: pnl >= 0 ? "#22C55E" : "#EF4444" }}>
+        <span style={{ color: pnlColor(pnl) }}>
           {pnl >= 0 ? "+" : ""}
           {fmtMoney(pnl, record.currency)}
         </span>
@@ -134,7 +136,7 @@ export default function HoldingsTable({ holdings, loading }: Props) {
       key: "pnl_percent",
       sorter: (a, b) => a.pnl_percent - b.pnl_percent,
       render: (pnl: number) => (
-        <span style={{ color: pnl >= 0 ? "#22C55E" : "#EF4444" }}>
+        <span style={{ color: pnlColor(pnl) }}>
           {pnl >= 0 ? "+" : ""}
           {pnl.toFixed(2)}%
         </span>

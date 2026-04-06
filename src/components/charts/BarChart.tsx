@@ -1,4 +1,5 @@
 import ReactECharts from "echarts-for-react";
+import { usePnlColor } from "../../hooks/usePnlColor";
 
 interface BarItem {
   name: string;
@@ -20,11 +21,12 @@ export default function BarChart({
   horizontal = false,
   colorByValue = false,
 }: BarChartProps) {
+  const { pnlColor } = usePnlColor();
   const names = data.map((d) => d.name);
   const values = data.map((d) => ({
     value: d.value,
     itemStyle: colorByValue
-      ? { color: d.value >= 0 ? "#22C55E" : "#EF4444" }
+      ? { color: pnlColor(d.value) }
       : {},
   }));
 

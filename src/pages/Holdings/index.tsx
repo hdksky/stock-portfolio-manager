@@ -23,6 +23,7 @@ import { useHoldingStore } from "../../stores/holdingStore";
 import { useAccountStore } from "../../stores/accountStore";
 import { useCategoryStore } from "../../stores/categoryStore";
 import { useQuoteStore } from "../../stores/quoteStore";
+import { usePnlColor } from "../../hooks/usePnlColor";
 import type { Holding, HoldingWithQuote, Market, Currency, StockQuote } from "../../types";
 import dayjs from "dayjs";
 
@@ -56,9 +57,10 @@ const marketColors: Record<Market, string> = {
 };
 
 function PnlText({ value, percent }: { value: number | null; percent: number | null }) {
+  const { pnlColorDark } = usePnlColor();
   if (value === null || value === undefined) return <span>—</span>;
   const isPositive = value >= 0;
-  const color = isPositive ? "#3f8600" : "#cf1322";
+  const color = pnlColorDark(value);
   const sign = isPositive ? "+" : "";
   return (
     <span style={{ color }}>
@@ -76,6 +78,7 @@ export default function HoldingsPage() {
   const { accounts, fetchAccounts } = useAccountStore();
   const { categories, fetchCategories } = useCategoryStore();
   const { holdingQuotes, loading: quotesLoading, lastUpdatedAt, fetchHoldingQuotes } = useQuoteStore();
+  const { pnlColorDark: pnlColorDarkFn } = usePnlColor();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [cashModalOpen, setCashModalOpen] = useState(false);
@@ -391,7 +394,7 @@ export default function HoldingsPage() {
         if (!record.quote) return <span>—</span>;
         const { change, change_percent } = record.quote;
         const isPositive = change >= 0;
-        const color = isPositive ? "#3f8600" : "#cf1322";
+        const color = pnlColorDarkFn(change);
         const sign = isPositive ? "+" : "";
         return (
           <span style={{ color }}>
