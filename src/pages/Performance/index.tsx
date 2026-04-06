@@ -1,7 +1,8 @@
 import { useEffect } from "react";
-import { Button, Card, Col, Divider, Row, Space, Typography } from "antd";
+import { Button, Card, Col, Divider, Row, Select, Space, Typography } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import { usePerformanceStore } from "../../stores/performanceStore";
+import { useAccountStore } from "../../stores/accountStore";
 import TimeRangeSelector from "./TimeRangeSelector";
 import PerformanceSummaryCards from "./PerformanceSummaryCards";
 import ReturnChart from "./ReturnChart";
@@ -13,12 +14,20 @@ import RiskMetricsPanel from "./RiskMetricsPanel";
 
 const { Title } = Typography;
 
+const MARKETS = [
+  { value: "US", label: "🇺🇸 美股" },
+  { value: "CN", label: "🇨🇳 A股" },
+  { value: "HK", label: "🇭🇰 港股" },
+];
+
 export default function PerformancePage() {
   const {
     timeRange,
     customStart,
     customEnd,
     selectedBenchmarks,
+    selectedMarket,
+    selectedAccountId,
     summary,
     returnSeries,
     benchmarkSeries,
@@ -31,10 +40,15 @@ export default function PerformancePage() {
     loading,
     setTimeRange,
     setBenchmarks,
+    setMarket,
+    setAccountId,
     fetchBenchmark,
   } = usePerformanceStore();
 
+  const { accounts, fetchAccounts } = useAccountStore();
+
   useEffect(() => {
+    fetchAccounts();
     // fetchAll is stable from the Zustand store - use getState() to avoid stale closure
     usePerformanceStore.getState().fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -56,6 +70,16 @@ export default function PerformancePage() {
     }
   };
 
+  const handleMarketChange = (value: string | undefined) => {
+    setMarket(value ?? null);
+    setTimeout(() => usePerformanceStore.getState().fetchAll(), 0);
+  };
+
+  const handleAccountChange = (value: string | undefined) => {
+    setAccountId(value ?? null);
+    setTimeout(() => usePerformanceStore.getState().fetchAll(), 0);
+  };
+
   return (
     <div>
       {/* Header */}
@@ -63,7 +87,35 @@ export default function PerformancePage() {
         <Title level={2} className="!mb-0">
           📊 绩效分析
         </Title>
-        <Space>
+        <Space wrap>
+          <Select
+            value={selectedMarket ?? undefined}
+            onChange={handleMarketChange}
+            placeholder="按市场"
+            allowClear
+            style={{ width: 130 }}
+            size="small"
+          >
+            {MARKETS.map((m) => (
+              <Select.Option key={m.value} value={m.value}>
+                {m.label}
+              </Select.Option>
+            ))}
+          </Select>
+          <Select
+            value={selectedAccountId ?? undefined}
+            onChange={handleAccountChange}
+            placeholder="按账户"
+            allowClear
+            style={{ width: 180 }}
+            size="small"
+          >
+            {accounts.map((a) => (
+              <Select.Option key={a.id} value={a.id}>
+                {a.name} ({a.market})
+              </Select.Option>
+            ))}
+          </Select>
           <TimeRangeSelector
             timeRange={timeRange}
             customStart={customStart}
