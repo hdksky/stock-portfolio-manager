@@ -281,7 +281,11 @@ pub async fn backfill_snapshots(
     start_date: NaiveDate,
     end_date: NaiveDate,
 ) -> Result<i32, String> {
-    let today = chrono::Utc::now().date_naive();
+    // Use UTC+8 (the furthest-ahead market timezone) to determine "today"
+    // so that CN/HK users don't see today's date clamped to yesterday
+    // before 08:00 local time.
+    let utc_plus_8 = chrono::FixedOffset::east_opt(8 * 3600).unwrap();
+    let today = chrono::Utc::now().with_timezone(&utc_plus_8).date_naive();
     // Clamp end_date to today
     let end_date = if end_date > today { today } else { end_date };
 
@@ -383,6 +387,10 @@ pub async fn backfill_snapshots(
 
     let config = quote_provider_service::get_quote_provider_config(db)?;
 
+    // Fetch a few extra days before start_date so that forward-fill can cover
+    // holidays / non-trading days at the beginning of the analysis period.
+    let fetch_start = start_date - chrono::Duration::days(14);
+
     for holding in &holdings {
         // Cash holdings have a constant price of 1.0 – no history fetch needed.
         if crate::services::quote_service::is_cash_symbol(&holding.symbol) {
@@ -406,7 +414,7 @@ pub async fn backfill_snapshots(
         match fetch_stock_history(
             &holding.symbol,
             &holding.market,
-            start_date,
+            fetch_start,
             end_date,
             provider,
         )
