@@ -3,6 +3,7 @@ import { Row, Col, Card, Statistic, Spin, Empty, Select } from "antd";
 import PieChart from "../../components/charts/PieChart";
 import { useStatisticsStore } from "../../stores/dashboardStore";
 import type { MarketStatistics } from "../../types";
+import { usePnlColor } from "../../hooks/usePnlColor";
 
 interface Props {
   selectedMarket: string;
@@ -21,11 +22,8 @@ const marketCurrency: Record<string, { code: string; symbol: string }> = {
   HK: { code: "HKD", symbol: "HK$" },
 };
 
-function pnlColor(pnl: number) {
-  return pnl >= 0 ? "#22C55E" : "#EF4444";
-}
-
 export default function MarketTab({ selectedMarket, onMarketChange }: Props) {
+  const { pnlColor } = usePnlColor();
   const { marketStats, fetchMarketStats } = useStatisticsStore();
 
   useEffect(() => {

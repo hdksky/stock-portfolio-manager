@@ -16,6 +16,7 @@ import { useQuarterlyStore } from "../../stores/quarterlyStore";
 import SnapshotHoldingsTable from "./SnapshotHoldingsTable";
 import QuarterlyNotesEditor from "./QuarterlyNotesEditor";
 import HoldingChangesTable from "./HoldingChangesTable";
+import { usePnlColor } from "../../hooks/usePnlColor";
 
 const { Title, Text } = Typography;
 
@@ -47,7 +48,8 @@ export default function SnapshotDetail() {
   }
 
   const snap = detail?.snapshot;
-  const pnlColor = (snap?.total_pnl ?? 0) >= 0 ? "#3f8600" : "#cf1322";
+  const { pnlColorDark } = usePnlColor();
+  const pnlColor = pnlColorDark(snap?.total_pnl ?? 0);
 
   return (
     <div>

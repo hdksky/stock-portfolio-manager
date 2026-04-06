@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Card, Empty, Timeline, Typography } from "antd";
 import MDEditor from "@uiw/react-md-editor";
 import { useQuarterlyStore } from "../../stores/quarterlyStore";
+import { usePnlColor } from "../../hooks/usePnlColor";
 
 const { Text, Title } = Typography;
 
@@ -11,6 +12,7 @@ function fmt(v: number) {
 
 export default function NotesTimeline() {
   const { notesSummaries, loading, fetchNotesSummaries } = useQuarterlyStore();
+  const { pnlColorDark } = usePnlColor();
 
   useEffect(() => {
     fetchNotesSummaries();
@@ -37,7 +39,7 @@ export default function NotesTimeline() {
               <Card size="small" className="mb-2">
                 <div className="flex gap-4 mb-2 text-sm text-gray-500">
                   <span>总市值: ${fmt(n.total_value)}</span>
-                  <span style={{ color: n.total_pnl >= 0 ? "#3f8600" : "#cf1322" }}>
+                  <span style={{ color: pnlColorDark(n.total_pnl) }}>
                     盈亏: {n.total_pnl >= 0 ? "+" : ""}${fmt(n.total_pnl)}
                   </span>
                 </div>

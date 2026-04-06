@@ -4,12 +4,14 @@ import { ArrowLeftOutlined, ReloadOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { useQuarterlyStore } from "../../stores/quarterlyStore";
 import TrendCharts from "./TrendCharts";
+import { usePnlColor } from "../../hooks/usePnlColor";
 
 const { Title, Text } = Typography;
 
 export default function TrendsPage() {
   const navigate = useNavigate();
   const { trends, loading, fetchTrends } = useQuarterlyStore();
+  const { pnlColorDark } = usePnlColor();
 
   useEffect(() => {
     fetchTrends();
@@ -70,7 +72,7 @@ export default function TrendsPage() {
                       value={latestPnl}
                       precision={2}
                       prefix="$"
-                      valueStyle={{ color: latestPnl >= 0 ? "#3f8600" : "#cf1322" }}
+                      valueStyle={{ color: pnlColorDark(latestPnl) }}
                     />
                   </Card>
                 </Col>

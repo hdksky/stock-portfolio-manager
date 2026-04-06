@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Card, Form, Input, Select, Typography, message } from "antd";
+import { Card, Form, Input, Radio, Select, Typography, message } from "antd";
 import { invoke } from "@tauri-apps/api/core";
 import { useQuoteStore } from "../../stores/quoteStore";
+import { useSettingsStore, type ColorScheme } from "../../stores/settingsStore";
 import type { QuoteProviderConfig } from "../../types";
 
 const { Paragraph } = Typography;
@@ -26,8 +27,14 @@ const PROVIDER_OPTIONS_CN = [
   { value: "xueqiu", label: "雪球（默认）" },
 ];
 
+const COLOR_SCHEME_OPTIONS: { value: ColorScheme; label: string }[] = [
+  { value: "red-up", label: "红涨绿跌（A股风格）" },
+  { value: "green-up", label: "绿涨红跌（美股风格）" },
+];
+
 export default function GeneralSettings() {
   const { refreshIntervalMs, setRefreshInterval } = useQuoteStore();
+  const { colorScheme, setColorScheme } = useSettingsStore();
   const [providerConfig, setProviderConfig] = useState<QuoteProviderConfig>({
     us_provider: "xueqiu",
     hk_provider: "xueqiu",
@@ -92,6 +99,29 @@ export default function GeneralSettings() {
 
   return (
     <div className="space-y-6">
+      <Card title="盈亏配色">
+        <Form layout="vertical" style={{ maxWidth: 400 }}>
+          <Form.Item label="盈亏颜色方案">
+            <Radio.Group
+              value={colorScheme}
+              onChange={(e) => {
+                setColorScheme(e.target.value);
+                message.success("配色方案已更新");
+              }}
+            >
+              {COLOR_SCHEME_OPTIONS.map((opt) => (
+                <Radio.Button key={opt.value} value={opt.value}>
+                  {opt.label}
+                </Radio.Button>
+              ))}
+            </Radio.Group>
+          </Form.Item>
+        </Form>
+        <Paragraph type="secondary">
+          设置盈亏数值的显示颜色。红涨绿跌为A股习惯（赚钱红色、亏钱绿色），绿涨红跌为欧美习惯（赚钱绿色、亏钱红色）。
+        </Paragraph>
+      </Card>
+
       <Card title="行情数据源设置">
         <Form layout="vertical" style={{ maxWidth: 400 }}>
           <Form.Item label="美股数据源">

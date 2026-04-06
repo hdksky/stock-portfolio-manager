@@ -7,6 +7,7 @@ import {
 } from "@ant-design/icons";
 import StatCard from "../../components/charts/StatCard";
 import type { DashboardSummary } from "../../types";
+import { usePnlColor } from "../../hooks/usePnlColor";
 
 interface Props {
   summary: DashboardSummary | null;
@@ -24,6 +25,7 @@ function fmt(value: number, currency: string) {
 }
 
 export default function SummaryCards({ summary, loading, error }: Props) {
+  const { pnlColor } = usePnlColor();
   if (error) {
     return (
       <Alert
@@ -68,7 +70,7 @@ export default function SummaryCards({ summary, loading, error }: Props) {
           title="总盈亏"
           value={`${pnlPositive ? "+" : ""}${fmt(summary.total_pnl, currency)}`}
           prefix={pnlPositive ? <RiseOutlined /> : <FallOutlined />}
-          valueStyle={{ color: pnlPositive ? "#22C55E" : "#EF4444", fontSize: 20 }}
+          valueStyle={{ color: pnlColor(summary.total_pnl), fontSize: 20 }}
           change={summary.total_pnl_percent}
           changeLabel="盈亏%"
         />
@@ -78,7 +80,7 @@ export default function SummaryCards({ summary, loading, error }: Props) {
           title="今日盈亏"
           value={`${dailyPositive ? "+" : ""}${fmt(summary.daily_pnl, currency)}`}
           prefix={dailyPositive ? <RiseOutlined /> : <FallOutlined />}
-          valueStyle={{ color: dailyPositive ? "#22C55E" : "#EF4444", fontSize: 20 }}
+          valueStyle={{ color: pnlColor(summary.daily_pnl), fontSize: 20 }}
         />
       </Col>
     </Row>

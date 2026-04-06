@@ -1,5 +1,6 @@
 import { Card, Statistic } from "antd";
 import { ArrowUpOutlined, ArrowDownOutlined } from "@ant-design/icons";
+import { usePnlColor } from "../../hooks/usePnlColor";
 
 interface StatCardProps {
   title: string;
@@ -22,8 +23,9 @@ export default function StatCard({
   valueStyle,
   loading,
 }: StatCardProps) {
+  const { pnlColor } = usePnlColor();
   const changeColor =
-    change === undefined ? undefined : change >= 0 ? "#22C55E" : "#EF4444";
+    change === undefined ? undefined : pnlColor(change);
 
   return (
     <Card loading={loading} bodyStyle={{ padding: "16px 20px" }}>

@@ -24,6 +24,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useQuarterlyStore } from "../../stores/quarterlyStore";
 import type { QuarterlySnapshot } from "../../types";
+import { usePnlColor } from "../../hooks/usePnlColor";
 
 const { Title, Text } = Typography;
 
@@ -33,6 +34,7 @@ function fmt(val: number) {
 
 export default function QuarterlyPage() {
   const navigate = useNavigate();
+  const { pnlColorDark } = usePnlColor();
   const {
     snapshots,
     missingQuarters,
@@ -102,7 +104,7 @@ export default function QuarterlyPage() {
       dataIndex: "total_pnl",
       key: "total_pnl",
       render: (v: number) => (
-        <Text style={{ color: v >= 0 ? "#3f8600" : "#cf1322" }}>
+        <Text style={{ color: pnlColorDark(v) }}>
           {v >= 0 ? "+" : ""}${fmt(v)}
         </Text>
       ),

@@ -18,6 +18,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuarterlyStore } from "../../stores/quarterlyStore";
 import ComparisonCharts from "./ComparisonCharts";
 import HoldingChangesTable from "./HoldingChangesTable";
+import { usePnlColor } from "../../hooks/usePnlColor";
 
 const { Title, Text } = Typography;
 
@@ -27,6 +28,7 @@ function fmt(v: number) {
 
 export default function QuarterComparisonPage() {
   const navigate = useNavigate();
+  const { pnlColorDark } = usePnlColor();
   const { snapshots, comparison, loading, fetchSnapshots, compareQuarters, clearComparison } =
     useQuarterlyStore();
 
@@ -131,7 +133,7 @@ export default function QuarterComparisonPage() {
                   precision={2}
                   prefix={`${(ov?.value_change ?? 0) >= 0 ? "+" : ""}$`}
                   valueStyle={{
-                    color: (ov?.value_change ?? 0) >= 0 ? "#3f8600" : "#cf1322",
+                    color: pnlColorDark(ov?.value_change ?? 0),
                   }}
                 />
               </Card>
@@ -145,7 +147,7 @@ export default function QuarterComparisonPage() {
                   suffix="%"
                   prefix={(ov?.value_change_percent ?? 0) >= 0 ? "+" : "-"}
                   valueStyle={{
-                    color: (ov?.value_change_percent ?? 0) >= 0 ? "#3f8600" : "#cf1322",
+                    color: pnlColorDark(ov?.value_change_percent ?? 0),
                   }}
                 />
               </Card>
@@ -179,7 +181,7 @@ export default function QuarterComparisonPage() {
                   title: "变化",
                   dataIndex: "value_change",
                   render: (v: number) => (
-                    <Text style={{ color: v >= 0 ? "#3f8600" : "#cf1322" }}>
+                    <Text style={{ color: pnlColorDark(v) }}>
                       {v >= 0 ? "+" : ""}{fmt(v)}
                     </Text>
                   ),
@@ -211,7 +213,7 @@ export default function QuarterComparisonPage() {
                   title: "变化",
                   dataIndex: "value_change",
                   render: (v: number) => (
-                    <Text style={{ color: v >= 0 ? "#3f8600" : "#cf1322" }}>
+                    <Text style={{ color: pnlColorDark(v) }}>
                       {v >= 0 ? "+" : ""}{fmt(v)}
                     </Text>
                   ),

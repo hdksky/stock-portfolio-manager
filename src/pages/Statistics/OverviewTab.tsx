@@ -2,17 +2,15 @@ import { Row, Col, Card, Statistic, Spin, Empty } from "antd";
 import PieChart from "../../components/charts/PieChart";
 import BarChart from "../../components/charts/BarChart";
 import type { StatisticsOverview } from "../../types";
+import { usePnlColor } from "../../hooks/usePnlColor";
 
 interface Props {
   overview: StatisticsOverview | null;
   loading: boolean;
 }
 
-function pnlColor(pnl: number) {
-  return pnl >= 0 ? "#22C55E" : "#EF4444";
-}
-
 export default function OverviewTab({ overview, loading }: Props) {
+  const { pnlColor } = usePnlColor();
   if (loading && !overview) {
     return (
       <div className="flex justify-center py-16">

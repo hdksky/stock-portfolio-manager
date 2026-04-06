@@ -1,6 +1,7 @@
 import ReactECharts from "echarts-for-react";
 import { Typography } from "antd";
 import type { HoldingPerformance } from "../../types";
+import { usePnlColor } from "../../hooks/usePnlColor";
 
 const { Text } = Typography;
 
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export default function RankingChart({ gainers, losers, height = 340 }: Props) {
+  const { profitColor, lossColor } = usePnlColor();
   const topGainers = gainers.slice(0, 10);
   const topLosers = losers.slice(0, 10);
 
@@ -47,7 +49,7 @@ export default function RankingChart({ gainers, losers, height = 340 }: Props) {
         yAxisIndex: 0,
         data: topGainers.map((h) => ({
           value: parseFloat(h.return_rate.toFixed(2)),
-          itemStyle: { color: "#52c41a" },
+          itemStyle: { color: profitColor },
         })),
         label: { show: true, position: "right", formatter: (p: { value: number }) => `${p.value >= 0 ? "+" : ""}${p.value}%` },
       },
@@ -58,7 +60,7 @@ export default function RankingChart({ gainers, losers, height = 340 }: Props) {
         yAxisIndex: 1,
         data: topLosers.map((h) => ({
           value: parseFloat(h.return_rate.toFixed(2)),
-          itemStyle: { color: "#ff4d4f" },
+          itemStyle: { color: lossColor },
         })),
         label: { show: true, position: "left", formatter: (p: { value: number }) => `${p.value.toFixed(1)}%` },
       },
@@ -77,10 +79,10 @@ export default function RankingChart({ gainers, losers, height = 340 }: Props) {
     <div>
       <Text strong>🏆 个股表现排行</Text>
       <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
-        <Text style={{ flex: 1, textAlign: "center", fontSize: 12, color: "#52c41a" }}>
+        <Text style={{ flex: 1, textAlign: "center", fontSize: 12, color: profitColor }}>
           最佳表现 Top 10
         </Text>
-        <Text style={{ flex: 1, textAlign: "center", fontSize: 12, color: "#ff4d4f" }}>
+        <Text style={{ flex: 1, textAlign: "center", fontSize: 12, color: lossColor }}>
           最差表现 Top 10
         </Text>
       </div>

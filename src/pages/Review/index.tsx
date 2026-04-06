@@ -19,6 +19,7 @@ import {
 } from "@ant-design/icons";
 import { useReviewStore } from "../../stores/reviewStore";
 import type { QuarterlyHoldingStatus } from "../../types";
+import { usePnlColor } from "../../hooks/usePnlColor";
 
 const { Title, Text } = Typography;
 
@@ -61,6 +62,7 @@ function HoldingTimeline({
   timeline: QuarterlyHoldingStatus[];
   symbol: string;
 }) {
+  const { pnlColorAnt, pnlTag } = usePnlColor();
   if (!timeline.length) return <Empty description="暂无季度记录" />;
 
   return (
@@ -68,9 +70,9 @@ function HoldingTimeline({
       items={timeline.map((item) => ({
         dot:
           item.pnl_percent >= 0 ? (
-            <CheckCircleOutlined style={{ color: "#52c41a" }} />
+            <CheckCircleOutlined style={{ color: pnlColorAnt(1) }} />
           ) : (
-            <CloseCircleOutlined style={{ color: "#ff4d4f" }} />
+            <CloseCircleOutlined style={{ color: pnlColorAnt(-1) }} />
           ),
         children: (
           <Card size="small" style={{ marginBottom: 8 }}>
@@ -80,7 +82,7 @@ function HoldingTimeline({
                 <Text>持仓：{item.shares} 股</Text>
                 <Text>均价：{item.avg_cost.toFixed(2)}</Text>
                 <Text>现价：{item.close_price.toFixed(2)}</Text>
-                <Tag color={item.pnl_percent >= 0 ? "green" : "red"}>
+                <Tag color={pnlTag(item.pnl_percent)}>
                   {item.pnl_percent >= 0 ? "+" : ""}
                   {item.pnl_percent.toFixed(2)}%
                 </Tag>

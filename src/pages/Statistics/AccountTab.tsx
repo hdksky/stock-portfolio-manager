@@ -5,6 +5,7 @@ import HoldingsTable from "../Dashboard/HoldingsTable";
 import { useStatisticsStore } from "../../stores/dashboardStore";
 import { useAccountStore } from "../../stores/accountStore";
 import type { AccountStatistics } from "../../types";
+import { usePnlColor } from "../../hooks/usePnlColor";
 
 interface Props {
   selectedAccountId: string;
@@ -17,11 +18,8 @@ const marketCurrency: Record<string, { code: string; symbol: string }> = {
   HK: { code: "HKD", symbol: "HK$" },
 };
 
-function pnlColor(pnl: number) {
-  return pnl >= 0 ? "#22C55E" : "#EF4444";
-}
-
 export default function AccountTab({ selectedAccountId, onAccountChange }: Props) {
+  const { pnlColor } = usePnlColor();
   const { accountStats, fetchAccountStats } = useStatisticsStore();
   const { accounts, fetchAccounts } = useAccountStore();
 
