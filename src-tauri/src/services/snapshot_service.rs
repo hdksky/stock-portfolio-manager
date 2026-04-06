@@ -293,33 +293,42 @@ pub async fn backfill_snapshots(
         return Ok(0);
     }
 
-    // 1. Load all current holdings
+    // 1. Load all relevant holdings: current active ones PLUS any that had
+    //    transactions in the backfill period (they may be sold now but were
+    //    held on historical dates).
+    #[derive(Debug, Clone)]
+    struct HoldingRow {
+        _id: String,
+        account_id: String,
+        symbol: String,
+        _name: String,
+        market: String,
+        shares: f64,
+        avg_cost: f64,
+        _currency: String,
+        category_name: Option<String>,
+    }
+
     let holdings = {
         let conn = db.conn.lock().map_err(|e| e.to_string())?;
+        let start_str = start_date.format("%Y-%m-%d").to_string();
         let mut stmt = conn
             .prepare(
                 "SELECT h.id, h.account_id, h.symbol, h.name, h.market,
                         h.shares, h.avg_cost, h.currency, c.name as category_name
                  FROM holdings h
                  LEFT JOIN categories c ON h.category_id = c.id
-                 WHERE h.shares > 0",
+                 WHERE h.shares > 0
+                    OR EXISTS (
+                        SELECT 1 FROM transactions t
+                        WHERE t.account_id = h.account_id
+                          AND t.symbol = h.symbol
+                          AND DATE(t.traded_at) >= ?1
+                    )",
             )
             .map_err(|e| e.to_string())?;
 
-        #[derive(Debug, Clone)]
-        struct HoldingRow {
-            _id: String,
-            account_id: String,
-            symbol: String,
-            _name: String,
-            market: String,
-            shares: f64,
-            avg_cost: f64,
-            _currency: String,
-            category_name: Option<String>,
-        }
-
-        let rows = stmt.query_map([], |row| {
+        let rows = stmt.query_map(rusqlite::params![start_str], |row| {
             Ok(HoldingRow {
                 _id: row.get(0)?,
                 account_id: row.get(1)?,
@@ -339,6 +348,90 @@ pub async fn backfill_snapshots(
 
     if holdings.is_empty() {
         return Ok(0);
+    }
+
+    // 1b. Load transactions from start_date onwards so we can reconstruct
+    //     historical holdings by unwinding future transactions.
+    struct TxInfo {
+        account_id: String,
+        symbol: String,
+        transaction_type: String,
+        shares: f64,
+        total_amount: f64,
+        commission: f64,
+        currency: String,
+        trade_date: NaiveDate,
+    }
+
+    let transactions: Vec<TxInfo> = {
+        let conn = db.conn.lock().map_err(|e| e.to_string())?;
+        let start_str = start_date.format("%Y-%m-%d").to_string();
+        let mut stmt = conn
+            .prepare(
+                "SELECT account_id, symbol, transaction_type, shares,
+                        total_amount, commission, currency, DATE(traded_at) as trade_date
+                 FROM transactions
+                 WHERE DATE(traded_at) >= ?1
+                 ORDER BY traded_at ASC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![start_str], |row| {
+                let td_str: String = row.get(7)?;
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, f64>(3)?,
+                    row.get::<_, f64>(4)?,
+                    row.get::<_, f64>(5)?,
+                    row.get::<_, String>(6)?,
+                    td_str,
+                ))
+            })
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        rows.into_iter()
+            .filter_map(|(aid, sym, tt, sh, ta, com, cur, ds)| {
+                NaiveDate::parse_from_str(&ds, "%Y-%m-%d")
+                    .ok()
+                    .map(|td| TxInfo {
+                        account_id: aid,
+                        symbol: sym,
+                        transaction_type: tt,
+                        shares: sh,
+                        total_amount: ta,
+                        commission: com,
+                        currency: cur,
+                        trade_date: td,
+                    })
+            })
+            .collect()
+    };
+
+    // Pre-compute the TOTAL unwind delta across ALL loaded transactions.
+    // For a given date D, the adjustment = total_unwind - running_unwind(up to D)
+    // gives the unwind of all transactions AFTER D, yielding the shares at D.
+    let mut total_unwind: std::collections::HashMap<(String, String), f64> =
+        std::collections::HashMap::new();
+    for tx in &transactions {
+        let key = (tx.account_id.clone(), tx.symbol.clone());
+        let cash_sym = format!("{}{}", crate::services::quote_service::CASH_SYMBOL_PREFIX, tx.currency);
+        let cash_key = (tx.account_id.clone(), cash_sym);
+        match tx.transaction_type.as_str() {
+            "BUY" => {
+                *total_unwind.entry(key).or_insert(0.0) -= tx.shares;
+                *total_unwind.entry(cash_key).or_insert(0.0) +=
+                    tx.total_amount + tx.commission;
+            }
+            "SELL" => {
+                *total_unwind.entry(key).or_insert(0.0) += tx.shares;
+                *total_unwind.entry(cash_key).or_insert(0.0) -=
+                    tx.total_amount - tx.commission;
+            }
+            _ => {}
+        }
     }
 
     // 2. Find all weekdays in range that are missing snapshots
@@ -361,12 +454,20 @@ pub async fn backfill_snapshots(
     };
 
     let mut missing_dates: Vec<NaiveDate> = Vec::new();
+    // Collect transaction dates in the range so we can force re-creation of
+    // their snapshots (a previous transaction-unaware backfill may have stored
+    // incorrect values for those dates and neighbours).
+    let tx_date_set: std::collections::HashSet<NaiveDate> =
+        transactions.iter().map(|tx| tx.trade_date).collect();
     let mut d = start_date;
     while d <= end_date {
         let wd = d.weekday();
         if wd != chrono::Weekday::Sat && wd != chrono::Weekday::Sun {
             let ds = d.format("%Y-%m-%d").to_string();
-            if !existing_dates.contains(&ds) {
+            // Include the date if no snapshot exists, OR if there are
+            // transactions in the period (previous snapshots may be stale
+            // from a transaction-unaware backfill).
+            if !existing_dates.contains(&ds) || !tx_date_set.is_empty() {
                 missing_dates.push(d);
             }
         }
@@ -452,11 +553,44 @@ pub async fn backfill_snapshots(
     let rates = crate::services::exchange_rate_service::get_cached_rates(cache).await?;
     let rates_json = serde_json::to_string(&rates).unwrap_or_default();
 
-    // 5. For each missing date, calculate and store portfolio values
+    // 5. For each missing date, calculate and store portfolio values.
+    //    We reconstruct historical holdings by unwinding transactions:
+    //    running_unwind accumulates the unwind of transactions up to each
+    //    date; the adjustment for date D = total_unwind - running_unwind
+    //    gives the unwind of all transactions AFTER D.
     let mut count = 0i32;
+    let mut txn_idx = 0usize;
+    let mut running_unwind: std::collections::HashMap<(String, String), f64> =
+        std::collections::HashMap::new();
 
     for date in &missing_dates {
         let date_str = date.format("%Y-%m-%d").to_string();
+
+        // Advance running_unwind past transactions on or before this date.
+        while txn_idx < transactions.len() && transactions[txn_idx].trade_date <= *date {
+            let tx = &transactions[txn_idx];
+            let key = (tx.account_id.clone(), tx.symbol.clone());
+            let cash_sym = format!(
+                "{}{}",
+                crate::services::quote_service::CASH_SYMBOL_PREFIX,
+                tx.currency
+            );
+            let cash_key = (tx.account_id.clone(), cash_sym);
+            match tx.transaction_type.as_str() {
+                "BUY" => {
+                    *running_unwind.entry(key).or_insert(0.0) -= tx.shares;
+                    *running_unwind.entry(cash_key).or_insert(0.0) +=
+                        tx.total_amount + tx.commission;
+                }
+                "SELL" => {
+                    *running_unwind.entry(key).or_insert(0.0) += tx.shares;
+                    *running_unwind.entry(cash_key).or_insert(0.0) -=
+                        tx.total_amount - tx.commission;
+                }
+                _ => {}
+            }
+            txn_idx += 1;
+        }
 
         let mut us_cost = 0.0f64;
         let mut us_value = 0.0f64;
@@ -468,6 +602,18 @@ pub async fn backfill_snapshots(
         let mut has_any_price = false;
 
         for holding in &holdings {
+            // Compute adjusted shares for this holding on this date:
+            // current shares + (total_unwind - running_unwind) for this key.
+            let key = (holding.account_id.clone(), holding.symbol.clone());
+            let total_adj = total_unwind.get(&key).copied().unwrap_or(0.0);
+            let running_adj = running_unwind.get(&key).copied().unwrap_or(0.0);
+            let adjustment = total_adj - running_adj;
+            let adjusted_shares = holding.shares + adjustment;
+
+            // Skip holdings with no shares on this date
+            if adjusted_shares.abs() < 1e-9 {
+                continue;
+            }
             // Look up the closing price for this stock on this date.
             // If the exact date is missing (market holiday), forward-fill
             // from the most recent prior trading day's closing price.
@@ -490,8 +636,8 @@ pub async fn backfill_snapshots(
                 has_any_price = true;
             }
 
-            let market_value = holding.shares * close_price;
-            let cost = holding.shares * holding.avg_cost;
+            let market_value = adjusted_shares * close_price;
+            let cost = adjusted_shares * holding.avg_cost;
 
             match holding.market.as_str() {
                 "US" => {
@@ -516,7 +662,7 @@ pub async fn backfill_snapshots(
                 symbol: holding.symbol.clone(),
                 market: holding.market.clone(),
                 category_name: holding.category_name.clone(),
-                shares: holding.shares,
+                shares: adjusted_shares,
                 avg_cost: holding.avg_cost,
                 close_price,
                 market_value,
