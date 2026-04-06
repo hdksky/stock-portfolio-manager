@@ -5,6 +5,7 @@ import type { PerformanceSummary } from "../../types";
 interface Props {
   summary: PerformanceSummary | null;
   loading: boolean;
+  currency?: string;
 }
 
 function colorFor(v: number) {
@@ -48,9 +49,21 @@ function PctStat({
   );
 }
 
-export default function PerformanceSummaryCards({ summary, loading }: Props) {
+export default function PerformanceSummaryCards({ summary, loading, currency = "USD" }: Props) {
   return (
     <Row gutter={[16, 16]}>
+      <Col xs={12} sm={8} md={6} lg={4}>
+        <Card loading={loading} size="small">
+          <Statistic
+            title="总盈亏"
+            value={Math.abs(summary?.total_pnl ?? 0)}
+            precision={2}
+            valueStyle={{ color: colorFor(summary?.total_pnl ?? 0) }}
+            prefix={(summary?.total_pnl ?? 0) >= 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
+            suffix={currency}
+          />
+        </Card>
+      </Col>
       <Col xs={12} sm={8} md={6} lg={4}>
         <Card loading={loading} size="small">
           <PctStat
@@ -66,18 +79,6 @@ export default function PerformanceSummaryCards({ summary, loading }: Props) {
             title="年化收益率"
             value={summary?.annualized_return ?? 0}
             tooltip="基于 TWR 年化到 365 天的收益率"
-          />
-        </Card>
-      </Col>
-      <Col xs={12} sm={8} md={6} lg={4}>
-        <Card loading={loading} size="small">
-          <Statistic
-            title="总盈亏"
-            value={Math.abs(summary?.total_pnl ?? 0)}
-            precision={2}
-            valueStyle={{ color: colorFor(summary?.total_pnl ?? 0) }}
-            prefix={(summary?.total_pnl ?? 0) >= 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
-            suffix="USD"
           />
         </Card>
       </Col>
