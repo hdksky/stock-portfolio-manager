@@ -83,7 +83,7 @@ export default function RankingChart({ gainers, losers, height = 340 }: Props) {
           最佳表现
         </Text>
         <Text style={{ flex: 1, textAlign: "center", fontSize: 12, color: lossColor }}>
-          最差表现 Top 10
+          最差表现
         </Text>
       </div>
       <ReactECharts
