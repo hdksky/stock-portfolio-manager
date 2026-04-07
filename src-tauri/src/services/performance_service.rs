@@ -953,6 +953,62 @@ pub fn get_holding_performance_ranking(
     let start_snaps = fetch_snap(&start_str)?;
     let end_snaps = fetch_snap(&end_str)?;
 
+    // Fetch net cash flows per symbol from transactions during the period
+    let mut net_cash_flows: std::collections::HashMap<String, f64> =
+        std::collections::HashMap::new();
+    {
+        let actual_start_str = {
+            let mut sql = String::from(
+                "SELECT MAX(date) FROM daily_holding_snapshots WHERE date <= ?1",
+            );
+            let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(start_str.clone())];
+            filter.append_where_clauses(&mut sql, &mut params);
+            let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+            conn.query_row(&sql, param_refs.as_slice(), |row| row.get::<_, Option<String>>(0))
+                .map_err(|e| e.to_string())?
+                .unwrap_or_else(|| start_str.clone())
+        };
+        let mut sql = String::from(
+            "SELECT symbol, transaction_type, SUM(total_amount)
+             FROM transactions
+             WHERE DATE(traded_at) > ?1 AND DATE(traded_at) <= ?2",
+        );
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
+            Box::new(actual_start_str),
+            Box::new(end_str.clone()),
+        ];
+        if let Some(ref account_id) = filter.account_id {
+            sql.push_str(&format!(" AND account_id = ?{}", params.len() + 1));
+            params.push(Box::new(account_id.clone()));
+        }
+        if let Some(ref market) = filter.market {
+            sql.push_str(&format!(" AND market = ?{}", params.len() + 1));
+            params.push(Box::new(market.clone()));
+        }
+        sql.push_str(" GROUP BY symbol, transaction_type");
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(param_refs.as_slice(), |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, f64>(2)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        for (sym, tx_type, amount) in rows {
+            let flow = match tx_type.as_str() {
+                "BUY" => amount,
+                "SELL" => -amount,
+                _ => 0.0,
+            };
+            *net_cash_flows.entry(sym).or_insert(0.0) += flow;
+        }
+    }
+
     let mut start_map: std::collections::HashMap<String, (String, String, f64)> =
         std::collections::HashMap::new();
     for s in start_snaps {
@@ -967,8 +1023,10 @@ pub fn get_holding_performance_ranking(
                 .cloned()
                 .unwrap_or_else(|| (e.market.clone(), e.category_name.clone(), 0.0));
             let ev = e.market_value;
-            let pnl = ev - sv;
-            let return_rate = if sv > 0.0 { pnl / sv * 100.0 } else { 0.0 };
+            let cf = net_cash_flows.get(&e.symbol).copied().unwrap_or(0.0);
+            let pnl = ev - sv - cf;
+            let cost_base = sv + cf.max(0.0); // start_value + any additional investment
+            let return_rate = if cost_base > 0.0 { pnl / cost_base * 100.0 } else { 0.0 };
             HoldingPerformance {
                 symbol: e.symbol,
                 name: String::new(), // will be filled below
