@@ -491,10 +491,11 @@ pub async fn backfill_snapshots(
     // Narrow the fetch window to cover only the missing dates.  When most
     // snapshots are already cached (e.g. a new day just started), this avoids
     // re-fetching weeks of historical prices that are already in the DB.
-    // The 14-day look-back before the earliest missing date provides enough
-    // data for forward-fill on market holidays / non-trading days.
+    // A 10-day look-back before the earliest missing date covers the longest
+    // market closure (A-share Spring Festival ≤ 10 days; HK ≤ 5; US ≤ 4),
+    // ensuring forward-fill always has a prior trading day's closing price.
     let earliest_missing = missing_dates.first().copied().unwrap_or(start_date);
-    let fetch_start = earliest_missing - chrono::Duration::days(14);
+    let fetch_start = earliest_missing - chrono::Duration::days(10);
     let fetch_end = missing_dates.last().copied().unwrap_or(end_date);
 
     // Deduplicate symbols – multiple accounts may hold the same stock;
