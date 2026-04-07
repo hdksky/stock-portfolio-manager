@@ -647,6 +647,78 @@ pub fn get_return_attribution(
         }
     }
 
+    // Fetch net cash flows per symbol from transactions during the period.
+    // BUY  → positive cash flow (money invested into the holding)
+    // SELL → negative cash flow (money withdrawn from the holding)
+    let mut net_cash_flows: std::collections::HashMap<String, f64> =
+        std::collections::HashMap::new();
+    {
+        let actual_start_str = {
+            // Use the actual snapshot start date (MAX(date) <= start_date)
+            let mut sql = String::from(
+                "SELECT MAX(date) FROM daily_holding_snapshots WHERE date <= ?1",
+            );
+            let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(start_str.clone())];
+            filter.append_where_clauses(&mut sql, &mut params);
+            let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+            conn.query_row(&sql, param_refs.as_slice(), |row| row.get::<_, Option<String>>(0))
+                .map_err(|e| e.to_string())?
+                .unwrap_or_else(|| start_str.clone())
+        };
+        let mut sql = String::from(
+            "SELECT symbol, transaction_type, SUM(total_amount)
+             FROM transactions
+             WHERE DATE(traded_at) > ?1 AND DATE(traded_at) <= ?2",
+        );
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
+            Box::new(actual_start_str),
+            Box::new(end_str.clone()),
+        ];
+        if let Some(ref account_id) = filter.account_id {
+            sql.push_str(&format!(" AND account_id = ?{}", params.len() + 1));
+            params.push(Box::new(account_id.clone()));
+        }
+        if let Some(ref market) = filter.market {
+            sql.push_str(&format!(" AND market = ?{}", params.len() + 1));
+            params.push(Box::new(market.clone()));
+        }
+        sql.push_str(" GROUP BY symbol, transaction_type");
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(param_refs.as_slice(), |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, f64>(2)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        for (sym, tx_type, amount) in rows {
+            let flow = match tx_type.as_str() {
+                "BUY" => amount,   // money invested
+                "SELL" => -amount, // money withdrawn
+                _ => 0.0,
+            };
+            *net_cash_flows.entry(sym).or_insert(0.0) += flow;
+        }
+    }
+
+    // Fetch holding names for enriching by_holding items
+    let holding_names: std::collections::HashMap<String, String> = {
+        let mut name_stmt = conn
+            .prepare("SELECT symbol, name FROM holdings")
+            .map_err(|e| e.to_string())?;
+        let rows = name_stmt
+            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        rows.into_iter().collect()
+    };
+
     let all_symbols: std::collections::HashSet<String> = start_vals
         .keys()
         .chain(end_vals.keys())
@@ -668,7 +740,10 @@ pub fn get_return_attribution(
             .map(|(m, c, v)| (m.clone(), c.clone(), *v))
             .unwrap_or_else(|| ("Unknown".to_string(), "未分类".to_string(), 0.0));
         let ev = end_vals.get(sym).copied().unwrap_or(0.0);
-        let pnl = ev - sv;
+        // Actual PnL = (end_value - start_value) - net_cash_flow
+        // net_cash_flow: positive for buys (money in), negative for sells (money out)
+        let cf = net_cash_flows.get(sym).copied().unwrap_or(0.0);
+        let pnl = ev - sv - cf;
 
         total_pnl += pnl;
         total_start_val += sv;
@@ -738,8 +813,13 @@ pub fn get_return_attribution(
             } else {
                 0.0
             };
+            // Use "symbol name" format for display, showing actual stock name
+            let display_name = match holding_names.get(&sym) {
+                Some(n) if !n.is_empty() && *n != sym => format!("{} {}", sym, n),
+                _ => sym,
+            };
             AttributionItem {
-                name: sym,
+                name: display_name,
                 pnl,
                 contribution_percent,
                 weight,

@@ -184,7 +184,7 @@ export default function PerformancePage() {
 
       {/* Attribution chart */}
       <Card size="small">
-        <AttributionChart attribution={attribution} height={300} />
+        <AttributionChart attribution={attribution} height={300} currency={currency} />
       </Card>
 
       <Divider />
